@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Creative Evolution Atelier – Live Meeting Room</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<main class="room">
+  <div class="stage" id="stage" data-active="">
+    <img class="scene" src="assets/scene.jpg" alt="Konferenzraum des Creative Evolution Atelier mit Claude, Grok, Cameron, Mistral und Vibe am runden Tisch">
+    <div class="spot" aria-hidden="true"></div>
+    <div class="glow" aria-hidden="true"></div>
+    <div class="chip" aria-hidden="true"><i></i><i></i><i></i><span id="chipText"></span></div>
+
+    <!-- Sechster Platz: Hologramm-Zuschaltung, Avatar-Asset fehlt noch -->
+    <button class="invite" data-seat="invite" aria-pressed="false">
+      <span class="invite-frame" aria-hidden="true">
+        <svg viewBox="0 0 48 48"><circle cx="24" cy="17" r="8"/><path d="M8 44c1-11 8-16 16-16s15 5 16 16"/></svg>
+      </span>
+      <span class="invite-text">
+        <strong>Invité</strong>
+        <small>Gastplatz, zugeschaltet</small>
+        <em>Avatar-Asset fehlt</em>
+      </span>
+    </button>
+
+    <div class="seats" id="seats"></div>
+  </div>
+
+  <nav class="dock" aria-label="Aktiven Sprecher markieren">
+    <span class="dock-label">Wer spricht?</span>
+    <div class="dock-buttons" id="dock"></div>
+    <button type="button" id="toggleInvite" aria-pressed="false">Invité anzeigen</button>
+    <button type="button" id="toggleTranscript" aria-expanded="false">Transkript</button>
+  </nav>
+  <aside class="transcript-panel" id="transcriptPanel" hidden aria-label="Sitzungstranskript">
+    <div class="transcript-head">
+      <strong>Sitzungstranskript</strong>
+      <button type="button" id="closeTranscript" aria-label="Transkript schließen">×</button>
+    </div>
+    <p class="privacy-note">Nur im Arbeitsspeicher dieser Seite. Kein automatisches Speichern. Bei Neuladen gehen nicht exportierte Einträge verloren.</p>
+    <label for="meetingTopic">Thema</label>
+    <input id="meetingTopic" maxlength="160" placeholder="Besprechungsthema">
+    <div class="transcript-log" id="transcriptLog" role="log" aria-live="polite"></div>
+    <form id="entryForm">
+      <label for="entrySpeaker">Sprecher</label>
+      <select id="entrySpeaker"></select>
+      <label for="entryText">Beitrag (manuell erfassen)</label>
+      <textarea id="entryText" rows="3" maxlength="10000" required placeholder="Gesagten Beitrag eingeben …"></textarea>
+      <button type="submit">Beitrag hinzufügen</button>
+    </form>
+    <div class="transcript-actions">
+      <button type="button" id="exportTxt">TXT herunterladen</button>
+      <button type="button" id="exportMd">Markdown herunterladen</button>
+      <button type="button" id="resetTranscript" class="danger">Sitzung löschen</button>
+    </div>
+    <p class="privacy-note">V1 protokolliert ausschließlich manuell eingegebene Beiträge, keine Sprache. Export vor dem Löschen prüfen; der Browser kann einen erfolgreichen Dateispeicher nicht bestätigen.</p>
+  </aside>
+</main>
+<script src="js/app.js"></script>
+<script src="js/transcript.js"></script>
+</body>
+</html>
