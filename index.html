@@ -6,16 +6,16 @@
 <section class="stage" id="stage" aria-label="Meeting-Raum mit fünf Teamplätzen" data-active="">
 <img class="scene" src="assets/scene.jpg" alt="Creative Evolution Atelier: fünf leere Stühle mit den Namensschildern Claude, Grok, Cameron, Mistral und Vibe">
 <div id="avatars" class="avatars" aria-hidden="true"></div><div class="spot"></div><div id="seatStates"></div>
-<div class="stage-status"><span class="live-dot"></span><span id="stageStatus">Bereit für deine Begrüßung</span></div>
+<div class="stage-status"><span class="live-dot"></span><span id="stageStatus">Wir hören zu.</span></div>
 <div class="subtitle" id="subtitle" hidden><strong id="subtitleName"></strong><p id="subtitleText"></p></div>
 <div class="guest" id="guest" hidden><strong id="guestLabel">Gast</strong><span>Zu Gast im Atelier</span></div>
 </section>
 </main>
 <button id="settingsOpen" class="admin-trigger" aria-label="Administration öffnen" title="Administration · Strg + Alt + A">⚙</button>
-<div class="talk-control"><button type="button" id="ptt" class="ptt" aria-pressed="false">🎙 <span>Zum Sprechen halten</span><kbd>Leertaste</kbd></button><p id="talkHint" role="status" aria-live="polite">Begrüße dein Team.</p></div>
+<div class="talk-control"><button type="button" id="ptt" class="ptt" aria-pressed="false">🎙 <span>Zum Sprechen halten</span><kbd>Leertaste</kbd></button><p id="talkHint" role="status" aria-live="polite">Wir hören zu.</p></div>
 <dialog id="settingsDialog">
 <form id="settingsForm"><div class="dialog-head"><h2>Administration</h2><button type="button" data-close="settingsDialog" aria-label="Schließen">×</button></div>
-<p class="muted">Öffnen: Strg + Alt + A oder das dezente Zahnrad oben rechts. Die erste Wortmeldung ist die Begrüßung; nach der Vorstellung startet die nächste Frage die Diskussion.</p>
+<p class="muted">Öffnen: Strg + Alt + A oder das dezente Zahnrad oben rechts. Sprich frei: Einzelne KI ansprechen, Vorstellung ausdrücklich wünschen oder die Frage an die Runde öffnen. Einzelgespräche pausieren laufende Runden.</p>
 <div class="grid"><label>Aktueller Sprecher<select id="human"><option value="host">Ich</option><option value="guest">Gast</option></select></label><label>Dein Name<input id="hostName" maxlength="80" value="Frank"></label><label>Name des Gastes<input id="guestName" maxlength="80" value="Gast" placeholder="Name frei eingeben"></label></div>
 <div class="checks"><label><input type="checkbox" id="autoSend" checked> Nach Loslassen automatisch senden</label><label><input type="checkbox" id="subtitles"> Untertitel auf der Bühne anzeigen</label></div>
 <p class="muted">Die Schlüssel der KI-Anbieter bleiben im Cloudflare Worker. Zugangstoken und Gespräch bleiben hier nur im Arbeitsspeicher.</p>
@@ -28,7 +28,7 @@
 <p class="muted">Die Blickwinkel wechseln pro Runde. Alle dürfen Ideen entwickeln, zustimmen, widersprechen und ihre Position ändern. Vibe ist ein eigener Sitz mit konfigurierbarem Modell; keine erfundene fünfte Anbieter-API.</p>
 <div class="controls"><button type="submit" class="primary">Übernehmen</button><button type="button" id="exportConfig">Konfiguration exportieren (ohne Token)</button></div>
 <p class="muted">Für Live-Betrieb werden Fragen, Gesprächskontext und Sprachaufnahmen an die ausgewählten API-Anbieter übertragen. Diese Anwendung speichert keine Sitzungen in einer Datenbank. Export vor dem Löschen prüfen.</p></form>
-<section class="admin-tools" aria-label="Sitzung steuern"><h3>Sitzung</h3><p id="status" role="status" aria-live="polite">Verbindung einrichten, dann das Team per Push-to-Talk begrüßen.</p><p class="muted"><span id="roundLabel">Noch keine Gesprächsrunde</span> · <span id="calls">0 KI-Anfragen</span></p>
+<section class="admin-tools" aria-label="Sitzung steuern"><h3>Sitzung</h3><p id="status" role="status" aria-live="polite">Zugangstoken eingeben, dann per Push-to-Talk frei sprechen.</p><p class="muted"><span id="roundLabel">Noch keine Gesprächsrunde</span> · <span id="calls">0 KI-Anfragen</span></p>
 <div class="controls"><button type="button" id="introduce">Vorstellung starten / wiederholen</button><button type="button" id="continue">Fortsetzen / nächste Runde</button><button type="button" id="pause">Pause</button><button type="button" id="finish">Ergebnis erstellen</button><button type="button" id="transcriptOpen">Gespräch <span id="entryCount">0</span></button><button type="button" id="fullscreen">Vollbild umschalten</button></div>
 <form id="questionForm" class="question-form"><label for="question">Texteingabe / erkannte Sprache prüfen</label><textarea id="question" maxlength="6000" rows="2" placeholder="Begrüßung, Frage oder Zusatzinformation …"></textarea><button type="submit" class="primary" id="send">Ans Team senden ↗</button></form><p id="micStatus" class="muted">Mikrofon nur bei gedrückter Taste · max. 60 Sekunden</p>
 <details class="result" id="resultPanel"><summary>Gemeinsames Ergebnis</summary><pre id="result">Noch kein Ergebnis erstellt.</pre><button type="button" id="exportResult">Ergebnis + gesamtes Gespräch als TXT</button></details>
