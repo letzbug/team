@@ -1,6 +1,6 @@
 // Local ringback, no asset download and no API request. Uses the gesture-unlocked audio context.
 export class Ringback {
-  constructor(getContext,{schedule=setTimeout,cancel=clearTimeout}={}){this.getContext=getContext;this.schedule=schedule;this.cancel=cancel;this.timer=null;this.voices=new Set();this.running=false;}
+  constructor(getContext,{schedule=(fn,ms)=>globalThis.setTimeout(fn,ms),cancel=id=>globalThis.clearTimeout(id)}={}){this.getContext=getContext;this.schedule=schedule;this.cancel=cancel;this.timer=null;this.voices=new Set();this.running=false;}
   start(){
     this.stop();const context=this.getContext();if(!context||context.state!=='running')return;
     this.running=true;let cycles=0;
