@@ -145,6 +145,24 @@ function applySettings(){
 $('settingsForm').addEventListener('submit',e=>{e.preventDefault();try{applySettings();$('settingsDialog').close();status('Einstellungen übernommen. Flexible Ansprache aktiv.');hint('Wir hören zu.');}catch(err){error(err);}});
 $('checkConnection').addEventListener('click',async()=>{try{applySettings();await checkConnection();}catch(e){error(e);}});
 $('loadVoices').addEventListener('click',async()=>{try{applySettings();const data=await services.voices();$('voiceList').replaceChildren();for(const v of data.voices||[]){const o=document.createElement('option');o.value=v.voice_id;o.label=v.name||v.voice_id;$('voiceList').append(o);}$('connectionStatus').textContent=`${(data.voices||[]).length} Stimmen geladen. Gewünschte IDs müssen im Worker freigegeben sein.`;}catch(e){error(e);}});
+$('testGem').addEventListener('click',async()=>{
+  const button=$('testGem');if(button.disabled||meeting.busy||ptt.held||ptt.processing)return;
+  button.disabled=true;const out=$('connectionStatus');
+  try{
+    applySettings();if(!config.workerUrl||!token)throw new Error('Bitte Worker-Adresse und Zugangstoken eintragen.');
+    const guest=config.remoteGuests.find(g=>g.id==='gem');
+    out.textContent=`Gem-Test: Worker und Freigabe für ${guest.model} prüfen …`;
+    await services.checkGuest(guest);
+    if(meeting.busy||ptt.held||ptt.processing)throw new Error('Bitte den Test bei pausiertem Gespräch erneut starten.');
+    if(meeting.calls>=config.maxCalls)throw new Error('Sitzungslimit erreicht.');
+    meeting.calls++;meeting.emit('usage',{calls:meeting.calls});
+    const start=performance.now();out.textContent=`Gem-Test: Kurze Textanfrage an Google (${guest.model}) läuft …`;
+    const response=await services.request('/v1/chat',{body:{provider:guest.provider,model:guest.model,prompt:'Antworte ausschließlich mit: Hallo Frank.',maxTokens:2200,responseMode:'live',purpose:'dialogue'}});
+    const result=await response.json();if(typeof result.text!=='string'||!result.text.trim())throw new Error('Keine Textantwort zurückgegeben.');
+    out.textContent=`Gem-Test erfolgreich (${guest.model}, ${((performance.now()-start)/1000).toFixed(1)} s): ${result.text.trim()} — API-Zugang funktioniert. Dieser Test verwendet weder Gesprächsverlauf noch Sprachausgabe.`;
+  }catch(e){out.textContent='Gem-Test fehlgeschlagen: '+(e.message||String(e));}
+  finally{updateButtons();}
+});
 $('rate').addEventListener('input',()=>{const rate=Number($('rate').value);$('rateValue').textContent=rate.toFixed(1)+'×';services.setRate(rate);});
 $('exportConfig').addEventListener('click',()=>{try{applySettings();download('atelier-meeting.config.json',JSON.stringify({schema:'atelier/meeting-2.7',settings:{...config,participants:undefined},participants:config.participants.map(({id,name,provider,model,voice})=>({id,name,provider,model,voice}))},null,2),'application/json');}catch(e){error(e);}});
 $('importConfig').addEventListener('change',async e=>{
