@@ -53,7 +53,7 @@ meeting.addEventListener('delivery',e=>{const item=e.detail;const record=logNode
 meeting.addEventListener('summary',e=>{$('result').textContent=e.detail.text||'Noch kein Ergebnis erstellt.';$('resultPanel').open=!!e.detail.text;});
 meeting.addEventListener('research',e=>{
   const r=e.detail,item=document.createElement('article'),heading=document.createElement('strong'),text=document.createElement('p'),links=document.createElement('ul');
-  item.className='log-entry';heading.textContent=r.query+' · '+new Date(r.checkedAt).toLocaleString();text.textContent=r.text;
+  item.className='log-entry';heading.textContent=r.query+' · '+(r.provider==='openai'?'OpenAI':'xAI')+' · '+new Date(r.checkedAt).toLocaleString();text.textContent=r.text;
   for(const source of r.sources){const li=document.createElement('li'),a=document.createElement('a');a.textContent=source.title+' — '+new URL(source.url).hostname;a.href=source.url;a.target='_blank';a.rel='noopener noreferrer';li.append(a);links.append(li);}
   item.append(heading,text,links);$('researchList').append(item);$('researchPanel').open=true;
 });
@@ -128,9 +128,9 @@ function memberFields(){
     $('memberSettings').append(row);
   }
 }
-function fillSettings(){for(const id of ['workerUrl','topic','language','rounds','audioMode','rate','maxCalls','hostName','guestName'])$(id).value=config[id];$('accessToken').value=token;$('autoSend').checked=config.autoSend;$('human').value=config.speaker;$('showGuest').checked=config.showGuest;$('subtitles').checked=config.subtitles;$('autoRounds').checked=config.autoRounds;$('rateValue').textContent=config.rate.toFixed(1)+'×';memberFields();}
+function fillSettings(){for(const id of ['workerUrl','topic','language','rounds','audioMode','rate','maxCalls','responseMode','researchProvider','hostName','guestName'])$(id).value=config[id];$('accessToken').value=token;$('autoSend').checked=config.autoSend;$('human').value=config.speaker;$('showGuest').checked=config.showGuest;$('subtitles').checked=config.subtitles;$('autoRounds').checked=config.autoRounds;$('rateValue').textContent=config.rate.toFixed(1)+'×';memberFields();}
 function applySettings(){
-  const next={};for(const id of ['workerUrl','topic','language','audioMode','hostName','guestName'])next[id]=$(id).value.trim();
+  const next={};for(const id of ['workerUrl','topic','language','audioMode','responseMode','researchProvider','hostName','guestName'])next[id]=$(id).value.trim();
   if(next.workerUrl){const u=new URL(next.workerUrl);if(u.username||u.password||u.search||u.hash)throw new Error('Worker-Adresse ohne Zugangsdaten, Query oder Fragment eingeben.');if(u.protocol!=='https:'&&!(u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname)))throw new Error('Worker-Adresse muss HTTPS verwenden.');}
   next.rounds=Number($('rounds').value);next.maxCalls=Number($('maxCalls').value);next.rate=Number($('rate').value);next.autoRounds=$('autoRounds').checked;next.autoSend=$('autoSend').checked;next.speaker=$('human').value;next.showGuest=$('showGuest').checked;next.subtitles=$('subtitles').checked;
   if(meeting.round>next.rounds)throw new Error('Die Rundenzahl kann nicht unter die laufende Runde gesenkt werden.');
@@ -142,11 +142,13 @@ $('settingsForm').addEventListener('submit',e=>{e.preventDefault();try{applySett
 $('checkConnection').addEventListener('click',async()=>{try{applySettings();await checkConnection();}catch(e){error(e);}});
 $('loadVoices').addEventListener('click',async()=>{try{applySettings();const data=await services.voices();$('voiceList').replaceChildren();for(const v of data.voices||[]){const o=document.createElement('option');o.value=v.voice_id;o.label=v.name||v.voice_id;$('voiceList').append(o);}$('connectionStatus').textContent=`${(data.voices||[]).length} Stimmen geladen. Gewünschte IDs müssen im Worker freigegeben sein.`;}catch(e){error(e);}});
 $('rate').addEventListener('input',()=>{const rate=Number($('rate').value);$('rateValue').textContent=rate.toFixed(1)+'×';services.setRate(rate);});
-$('exportConfig').addEventListener('click',()=>{try{applySettings();download('atelier-meeting.config.json',JSON.stringify({schema:'atelier/meeting-2.5',settings:{...config,participants:undefined},participants:config.participants.map(({id,name,provider,model,voice})=>({id,name,provider,model,voice}))},null,2),'application/json');}catch(e){error(e);}});
+$('exportConfig').addEventListener('click',()=>{try{applySettings();download('atelier-meeting.config.json',JSON.stringify({schema:'atelier/meeting-2.6',settings:{...config,participants:undefined},participants:config.participants.map(({id,name,provider,model,voice})=>({id,name,provider,model,voice}))},null,2),'application/json');}catch(e){error(e);}});
 $('importConfig').addEventListener('change',async e=>{
   const file=e.target.files[0];if(!file)return;
   try{if(file.size>100000)throw new Error('Konfiguration zu groß.');const data=JSON.parse((await file.text()).replace(/^\ufeff/,''));const settings=data.settings||{};
     for(const k of ['workerUrl','topic','hostName','guestName'])if(typeof settings[k]==='string')config[k]=settings[k];
+    if(['live','balanced','deep'].includes(settings.responseMode))config.responseMode=settings.responseMode;
+    if(['openai','xai'].includes(settings.researchProvider))config.researchProvider=settings.researchProvider;
     if(['de','fr','en'].includes(settings.language))config.language=settings.language;
     const rounds=Number(settings.rounds||settings.defaultRounds);if([3,4].includes(rounds))config.rounds=rounds;
     if(['xai','browser','text'].includes(settings.audioMode))config.audioMode=settings.audioMode;

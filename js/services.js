@@ -8,10 +8,10 @@ export class Services {
     const res=await fetch(this.base()+path,{method,headers,signal:signal?AbortSignal.any([signal,AbortSignal.timeout(100000)]):AbortSignal.timeout(100000),body:body instanceof FormData?body:body?JSON.stringify(body):undefined,cache:'no-store'});
     if(!res.ok){const j=await res.json().catch(()=>({}));throw new Error(j.error||`HTTP ${res.status}`);}return res;
   }
-  async health(){return (await this.request('/v1/health',{method:'GET'})).json();}
+  async health(){const data=await (await this.request('/v1/health',{method:'GET'})).json();this.healthInfo=data;return data;}
   async voices(){return (await this.request('/v1/voices',{method:'GET'})).json();}
-  async ask(p,prompt,signal){return (await this.request('/v1/chat',{signal,body:{provider:p.provider,model:p.model,prompt,maxTokens:2200}})).json();}
-  async research(query,language,signal){try{return (await this.request('/v1/research',{signal,body:{query,language}})).json();}catch(e){if(e.message==='Nicht gefunden.'||e.message==='HTTP 404')throw new Error('Webrecherche benötigt Worker 2.5. Bitte den Cloudflare-Code aktualisieren.');throw e;}}
+  async ask(p,prompt,signal,{purpose='dialogue'}={}){return (await this.request('/v1/chat',{signal,body:{provider:p.provider,model:p.model,prompt,maxTokens:2200,responseMode:this.config.responseMode||'live',purpose}})).json();}
+  async research(query,language,signal){const provider=this.config.researchProvider||'openai';if(provider==='openai'&&this.healthInfo&&!this.healthInfo.research?.providers?.includes('openai'))throw new Error('OpenAI-Websuche benötigt Worker 2.6 mit freigegebenem OpenAI-Suchmodell.');try{return (await this.request('/v1/research',{signal,body:{query,language,provider}})).json();}catch(e){if(e.message==='Nicht gefunden.'||e.message==='HTTP 404')throw new Error('Webrecherche benötigt Worker 2.5. Bitte den Cloudflare-Code aktualisieren.');throw e;}}
   async transcribe(blob,signal){const data=new FormData();const ext=blob.type.includes('mp4')?'m4a':blob.type.includes('ogg')?'ogg':'webm';data.append('file',blob,`question.${ext}`);data.append('language',this.config.language);return (await this.request('/v1/stt',{signal,body:data})).json();}
   unlock(){
     // Must run from a user gesture. Web Audio is also the later avatar mouth-envelope source.
