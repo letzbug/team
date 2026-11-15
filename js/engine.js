@@ -33,7 +33,7 @@ export class Meeting extends EventTarget {
   emit(type,detail={}) {this.dispatchEvent(new CustomEvent(type,{detail}));}
   status(phase,text){this.phase=phase;this.emit('status',{phase,text});}
   member(id){return this.config.participants.find(p=>p.id===id)||findGuest(this.config,id);}
-  callState(state){this.remoteCall=state;this.emit('call',{state:state?{...state,guest:this.member(state.id)}:null});}
+  callState(state){if(state?.status!=='calling')this.services.stopRinging?.();this.remoteCall=state;this.emit('call',{state:state?{...state,guest:this.member(state.id)}:null});}
   hangup(){this.stop('Anruf beendet');this.task=null;this.focus=null;this.interruptedSpeaker=null;const guest=this.remoteCall&&this.member(this.remoteCall.id);this.callState(null);if(guest)this.add('System',`Anruf mit ${guest.name} beendet.`,'call-event');this.status('listening',CALL_WORDS[this.config.language].closed);}
   add(author,text,kind='contribution',extra={}) {
     const p=this.member(author);
@@ -208,8 +208,19 @@ export class Meeting extends EventTarget {
         if(!this.current(epoch))return;
         this.callState({id:guest.id,status:'calling'});
         if(!task.lead){if(!await this.say('cameron',CALL_WORDS[this.config.language].lead(guest.name),'call-event',epoch))return;task.lead=true;}
-        this.status('thinking',`Calling ${guest.name}…`);
-        const answer=await this.ask(guest,`ANRUF: Du wirst gerade als externer Gast ins Atelier geholt. Begrüße die Runde natürlich mit Hallo und deinem Namen, insgesamt höchstens 20–40 Wörter. Falls die jüngste menschliche Äußerung schon eine Sachfrage enthält, beantworte sie kurz nach der Begrüßung; sonst frage knapp, wobei du helfen kannst. Keine Vorstellung des ganzen Teams. Keine Behauptung eines echten Video-/Telefonanrufs oder Zugriffs auf frühere private Chats.`,epoch);
+        this.status('thinking',`Calling ${guest.name}…`);this.services.startRinging?.();
+        const greetingJob=`ANRUF: Du wirst gerade als externer Gast ins Atelier geholt. Begrüße die Runde natürlich mit Hallo und deinem Namen, insgesamt höchstens 20–40 Wörter. Falls die jüngste menschliche Äußerung schon eine Sachfrage enthält, beantworte sie kurz nach der Begrüßung; sonst frage knapp, wobei du helfen kannst. Keine Vorstellung des ganzen Teams. Keine Behauptung eines echten Video-/Telefonanrufs oder Zugriffs auf frühere private Chats.`;
+        let answer;
+        try{answer=await this.ask(guest,greetingJob,epoch);}catch(err){
+          if(!this.current(epoch))return;
+          if(!/Google Gemini HTTP 503\b/.test(err.message))throw err;
+          this.status('thinking',`${guest.name}: Google ist ausgelastet · zweiter Versuch …`);
+          await new Promise(resolve=>setTimeout(resolve,900));if(!this.current(epoch))return;
+          try{answer=await this.ask(guest,greetingJob,epoch);}catch(retryError){
+            if(/Google Gemini HTTP 503\b/.test(retryError.message))throw new Error(`${guest.name} ist gerade nicht erreichbar: Google meldet vorübergehend keine freie Kapazität (HTTP 503). Bitte später erneut anrufen.`);
+            throw retryError;
+          }
+        }
         if(!this.current(epoch))return;
         this.callState({id:guest.id,status:'connected'});this.focus=guest.id;this.interruptedSpeaker=null;
         if(!await this.say(guest.id,answer,'guest-greeting',epoch))return;
@@ -302,7 +313,7 @@ export class Meeting extends EventTarget {
         if(!await this.say('cameron',oral,'closing',epoch))return;
         this.summaryVersion=this.entries.length;this.task=null;this.status('complete','Ergebnis und Gespräch sind bereit für den TXT-Export');
       }
-    }catch(err){if(this.current(epoch)){if(this.remoteCall?.status==='calling')this.callState(null);this.add('System',err.message,'system');this.status('paused',err.message);}}
+    }catch(err){if(this.current(epoch)){if(this.remoteCall?.status==='calling')this.callState(null);this.add('System',err.message,'system');this.status('paused',err.message);if(this.task?.kind==='call')this.emit('call-error',{message:err.message});}}
     finally{
       if(this.current(epoch)){this.busy=false;this.emit('speaker',{id:null});this.emit('change');if(this.task&&this.phase!=='paused')return this.run();}
     }

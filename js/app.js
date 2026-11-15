@@ -39,6 +39,7 @@ meeting.addEventListener('status',e=>{
   const message=simple[phase]||'Wir hören zu.';$('stageStatus').textContent=message;hint(message);updateButtons();
 });
 meeting.addEventListener('change',updateButtons);
+meeting.addEventListener('call-error',e=>{$('talkHint').textContent=e.detail.message;$('stageStatus').textContent=e.detail.message;});
 meeting.addEventListener('usage',e=>$('calls').textContent=`${e.detail.calls} KI-Anfragen`);
 meeting.addEventListener('speaker',e=>{
   const ids=e.detail.ids||[e.detail.id].filter(Boolean),id=ids.length>1?'team':ids[0],p=config.participants.find(p=>p.id===id);

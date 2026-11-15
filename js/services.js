@@ -1,6 +1,7 @@
+import {Ringback} from './ringtone.js';
 // Only the personal Worker access token reaches the browser. Provider keys stay in Worker secrets.
 export class Services {
-  constructor(config,getToken,onState=()=>{}) {this.config=config;this.getToken=getToken;this.onState=onState;this.audio=null;this.cancelPlayback=null;this.audioCtrl=null;this.context=null;this.source=null;this.analyser=null;this.frame=null;}
+  constructor(config,getToken,onState=()=>{}) {this.config=config;this.getToken=getToken;this.onState=onState;this.audio=null;this.cancelPlayback=null;this.audioCtrl=null;this.context=null;this.source=null;this.analyser=null;this.frame=null;this.ringback=new Ringback(()=>this.context);}
   base(){const u=new URL(this.config.workerUrl);if(u.protocol!=='https:'&&!(u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname)))throw new Error('Worker benötigt HTTPS.');return u.href.replace(/\/+$/,'');}
   async request(path,{signal,body,method='POST'}={}){
     const headers={Authorization:`Bearer ${this.getToken()}`};
@@ -18,7 +19,10 @@ export class Services {
     // Must run from a user gesture. Web Audio is also the later avatar mouth-envelope source.
     try{if(!this.context)this.context=new AudioContext();void this.context.resume();}catch{/* HTML audio remains available */}
   }
+  startRinging(){if(this.config.audioMode!=='text')this.ringback.start();}
+  stopRinging(){this.ringback.stop();}
   stopAudio(){
+    this.stopRinging();
     this.audioCtrl?.abort();this.audioCtrl=null;
     if(this.cancelPlayback)this.cancelPlayback();
     if(this.audio){this.audio.pause();this.audio.src='';this.audio=null;}
