@@ -11,6 +11,7 @@ export class Services {
   async health(){return (await this.request('/v1/health',{method:'GET'})).json();}
   async voices(){return (await this.request('/v1/voices',{method:'GET'})).json();}
   async ask(p,prompt,signal){return (await this.request('/v1/chat',{signal,body:{provider:p.provider,model:p.model,prompt,maxTokens:2200}})).json();}
+  async research(query,language,signal){try{return (await this.request('/v1/research',{signal,body:{query,language}})).json();}catch(e){if(e.message==='Nicht gefunden.'||e.message==='HTTP 404')throw new Error('Webrecherche benötigt Worker 2.5. Bitte den Cloudflare-Code aktualisieren.');throw e;}}
   async transcribe(blob,signal){const data=new FormData();const ext=blob.type.includes('mp4')?'m4a':blob.type.includes('ogg')?'ogg':'webm';data.append('file',blob,`question.${ext}`);data.append('language',this.config.language);return (await this.request('/v1/stt',{signal,body:data})).json();}
   unlock(){
     // Must run from a user gesture. Web Audio is also the later avatar mouth-envelope source.
@@ -22,29 +23,6 @@ export class Services {
     if(this.audio){this.audio.pause();this.audio.src='';this.audio=null;}
     if(this.source){try{this.source.stop();}catch{}this.source=null;}
     if(this.frame)cancelAnimationFrame(this.frame);this.frame=null;this.onState('mouth',{id:null,value:0});
-  }
-  async speakGroup(members,text,isCurrent){
-    this.stopAudio();if(!isCurrent())return false;
-    if(this.config.audioMode==='text')return false;
-    if(this.config.audioMode==='browser'){await this.browserSpeech(members[0],text,isCurrent);return 'browser-single-voice';}
-    if(!this.context||this.context.state!=='running')throw new Error('Audio noch gesperrt. Einmal Push-to-Talk oder Fortsetzen anklicken.');
-    const ctrl=new AbortController();this.audioCtrl=ctrl;
-    const buffers=await Promise.all(members.map(async p=>{
-      const res=await this.request('/v1/tts',{signal:ctrl.signal,body:{text,voice:p.voice,language:this.config.language}});
-      return this.context.decodeAudioData(await res.arrayBuffer());
-    })).catch(error=>{ctrl.abort();throw error;});
-    if(!isCurrent())return false;
-    // Mix all five voices into one sample-aligned buffer. The greeting alone overlaps.
-    const length=Math.max(...buffers.map(b=>b.length));const mixed=this.context.createBuffer(1,length,this.context.sampleRate),out=mixed.getChannelData(0);
-    for(const b of buffers){const data=b.getChannelData(0);for(let i=0;i<data.length;i++)out[i]+=data[i]/buffers.length;}
-    let peak=0;for(const v of out)peak=Math.max(peak,Math.abs(v));if(peak>0)for(let i=0;i<out.length;i++)out[i]*=.85/peak;
-    return new Promise((resolve,reject)=>{
-      const source=this.context.createBufferSource(),analyser=this.context.createAnalyser();analyser.fftSize=256;source.buffer=mixed;source.playbackRate.value=Number(this.config.rate)||1;source.connect(analyser);analyser.connect(this.context.destination);this.source=source;
-      const finish=value=>{source.disconnect();analyser.disconnect();if(this.source===source)this.source=null;if(this.frame)cancelAnimationFrame(this.frame);this.frame=null;this.cancelPlayback=null;for(const p of members)this.onState('mouth',{id:p.id,value:0});resolve(value);};
-      this.cancelPlayback=()=>{source.onended=null;try{source.stop();}catch{}finish(false);};source.onended=()=>finish(isCurrent());
-      const data=new Uint8Array(analyser.fftSize);const tick=()=>{if(this.source!==source)return;analyser.getByteTimeDomainData(data);const rms=Math.sqrt(data.reduce((a,v)=>a+((v-128)/128)**2,0)/data.length);for(const p of members)this.onState('mouth',{id:p.id,value:Math.min(1,rms*5)});this.frame=requestAnimationFrame(tick);};
-      try{source.start();tick();}catch(e){this.cancelPlayback=null;source.disconnect();analyser.disconnect();reject(e);}
-    });
   }
   async speak(p,text,isCurrent){
     this.stopAudio();if(!isCurrent())return false;

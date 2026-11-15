@@ -33,7 +33,7 @@ function updateButtons(){
 for(const m of config.participants){const node=document.createElement('div');node.className='seat-state';node.dataset.id=m.id;node.dataset.speaking='false';node.style.setProperty('--x',m.x+'%');node.style.setProperty('--c',m.color);const hand=document.createElement('span');hand.className='hand';hand.hidden=true;hand.textContent='✋';const badge=document.createElement('span');badge.className='badge';badge.textContent=m.name;node.append(hand,badge);$('seatStates').append(node);}
 meeting.addEventListener('status',e=>{
   const {phase,text}=e.detail;$('status').classList.toggle('error',phase==='paused');status(text);
-  const simple={thinking:'Das Team denkt nach …',speaking:text,paused:'Pause',idle:'Wir hören zu.',routing:'Cameron hört zu …',listening:text,ready:'Deine Frage oder Ergänzung?',complete:'Das Ergebnis ist bereit.'};
+  const simple={thinking:'Das Team denkt nach …',speaking:text,paused:'Pause',idle:'Wir hören zu.',routing:'Cameron hört zu …',researching:'Cameron recherchiert im Web …',listening:text,ready:'Deine Frage oder Ergänzung?',complete:'Das Ergebnis ist bereit.'};
   const message=simple[phase]||'Wir hören zu.';$('stageStatus').textContent=message;hint(message);updateButtons();
 });
 meeting.addEventListener('change',updateButtons);
@@ -47,15 +47,21 @@ meeting.addEventListener('round',e=>{const {round,total}=e.detail;$('roundLabel'
 meeting.addEventListener('hands',e=>{document.querySelectorAll('.seat-state').forEach(n=>{const h=e.detail.items.find(h=>h.id===n.dataset.id);n.querySelector('.hand').hidden=!h;if(h)n.querySelector('.hand').title=h.reason;});avatars.hands(e.detail.items);});
 meeting.addEventListener('entry',e=>{
   const item=e.detail,node=document.createElement('article');node.className='log-entry '+item.kind;const title=document.createElement('strong'),meta=document.createElement('small'),p=document.createElement('p');title.textContent=item.name;meta.textContent=`Runde ${item.round} · ${labels[item.delivery]||item.delivery} · ${new Date(item.time).toLocaleTimeString()}`;p.textContent=item.text;node.append(title,meta,p);$('transcriptLog').append(node);logNodes.set(item.id,{node,meta});$('entryCount').textContent=meeting.entries.length;
-  if(config.subtitles&&item.author!=='System'&&!item.kind.startsWith('human')){$('subtitleName').textContent=item.name;$('subtitleText').textContent=item.text;$('subtitle').hidden=false;}
+  if(config.subtitles&&item.kind!=='research'&&item.author!=='System'&&!item.kind.startsWith('human')){$('subtitleName').textContent=item.name;$('subtitleText').textContent=item.text;$('subtitle').hidden=false;}
 });
 meeting.addEventListener('delivery',e=>{const item=e.detail;const record=logNodes.get(item.id);if(record)record.meta.textContent=`Runde ${item.round} · ${labels[item.delivery]||item.delivery} · ${new Date(item.time).toLocaleTimeString()}`;});
 meeting.addEventListener('summary',e=>{$('result').textContent=e.detail.text||'Noch kein Ergebnis erstellt.';$('resultPanel').open=!!e.detail.text;});
-meeting.addEventListener('reset',()=>{$('transcriptLog').replaceChildren();logNodes.clear();$('result').textContent='Noch kein Ergebnis erstellt.';$('resultPanel').open=false;$('entryCount').textContent='0';$('calls').textContent='0 KI-Anfragen';$('roundLabel').textContent='Noch keine Gesprächsrunde';$('question').value='';$('subtitle').hidden=true;avatars.reset();$('stage').dataset.listening='false';hint('Wir hören zu.');updateButtons();});
+meeting.addEventListener('research',e=>{
+  const r=e.detail,item=document.createElement('article'),heading=document.createElement('strong'),text=document.createElement('p'),links=document.createElement('ul');
+  item.className='log-entry';heading.textContent=r.query+' · '+new Date(r.checkedAt).toLocaleString();text.textContent=r.text;
+  for(const source of r.sources){const li=document.createElement('li'),a=document.createElement('a');a.textContent=source.title+' — '+new URL(source.url).hostname;a.href=source.url;a.target='_blank';a.rel='noopener noreferrer';li.append(a);links.append(li);}
+  item.append(heading,text,links);$('researchList').append(item);$('researchPanel').open=true;
+});
+meeting.addEventListener('reset',()=>{$('transcriptLog').replaceChildren();logNodes.clear();$('result').textContent='Noch kein Ergebnis erstellt.';$('resultPanel').open=false;$('researchList').replaceChildren();$('researchPanel').open=false;$('entryCount').textContent='0';$('calls').textContent='0 KI-Anfragen';$('roundLabel').textContent='Noch keine Gesprächsrunde';$('question').value='';$('subtitle').hidden=true;avatars.reset();$('stage').dataset.listening='false';hint('Wir hören zu.');updateButtons();});
 function currentHealthKey(){return config.workerUrl+'\n'+token;}
 async function checkConnection(){
   if(connectionBusy)return false;connectionBusy=true;const key=currentHealthKey();health=null;
-  try{health=await services.health();if(key!==currentHealthKey())return false;healthKey=key;const names=(health.providers||[]).join(', ')||'keine';$('connectionStatus').textContent=`Worker ${health.version||'ältere Version'} erreichbar. Textanbieter: ${names}. xAI TTS: ${health.voice?.tts?'bereit':'fehlt'}. STT: ${health.voice?.stt?'bereit':'fehlt'}. Kostenlimit: ${health.limiter?'atomar':health.kv?'KV (ungefähr)':'nicht eingerichtet'}.`;return true;}
+  try{health=await services.health();if(key!==currentHealthKey())return false;healthKey=key;const names=(health.providers||[]).join(', ')||'keine';$('connectionStatus').textContent=`Worker ${health.version||'ältere Version'} erreichbar. Textanbieter: ${names}. xAI TTS: ${health.voice?.tts?'bereit':'fehlt'}. STT: ${health.voice?.stt?'bereit':'fehlt'}. Websuche: ${health.research?.enabled?'eingerichtet':'Worker 2.5 erforderlich'}. Kostenlimit: ${health.limiter?'atomar':health.kv?'KV (ungefähr)':'nicht eingerichtet'}.`;return true;}
   catch(e){$('connectionStatus').textContent=e.message;error(e);return false;}finally{connectionBusy=false;}
 }
 async function ready({intro=false,microphone=false,routing=false}={}){
@@ -136,7 +142,7 @@ $('settingsForm').addEventListener('submit',e=>{e.preventDefault();try{applySett
 $('checkConnection').addEventListener('click',async()=>{try{applySettings();await checkConnection();}catch(e){error(e);}});
 $('loadVoices').addEventListener('click',async()=>{try{applySettings();const data=await services.voices();$('voiceList').replaceChildren();for(const v of data.voices||[]){const o=document.createElement('option');o.value=v.voice_id;o.label=v.name||v.voice_id;$('voiceList').append(o);}$('connectionStatus').textContent=`${(data.voices||[]).length} Stimmen geladen. Gewünschte IDs müssen im Worker freigegeben sein.`;}catch(e){error(e);}});
 $('rate').addEventListener('input',()=>{const rate=Number($('rate').value);$('rateValue').textContent=rate.toFixed(1)+'×';services.setRate(rate);});
-$('exportConfig').addEventListener('click',()=>{try{applySettings();download('atelier-meeting.config.json',JSON.stringify({schema:'atelier/meeting-2.4',settings:{...config,participants:undefined},participants:config.participants.map(({id,name,provider,model,voice})=>({id,name,provider,model,voice}))},null,2),'application/json');}catch(e){error(e);}});
+$('exportConfig').addEventListener('click',()=>{try{applySettings();download('atelier-meeting.config.json',JSON.stringify({schema:'atelier/meeting-2.5',settings:{...config,participants:undefined},participants:config.participants.map(({id,name,provider,model,voice})=>({id,name,provider,model,voice}))},null,2),'application/json');}catch(e){error(e);}});
 $('importConfig').addEventListener('change',async e=>{
   const file=e.target.files[0];if(!file)return;
   try{if(file.size>100000)throw new Error('Konfiguration zu groß.');const data=JSON.parse((await file.text()).replace(/^\ufeff/,''));const settings=data.settings||{};
