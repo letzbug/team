@@ -1,65 +1,38 @@
 <!doctype html>
 <html lang="de">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Creative Evolution Atelier – Live Meeting Room</title>
-<link rel="stylesheet" href="css/style.css">
-</head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Creative Evolution Atelier · Team Meeting</title><link rel="stylesheet" href="css/style.css"></head>
 <body>
-<main class="room">
-  <div class="stage" id="stage" data-active="">
-    <img class="scene" src="assets/scene.jpg" alt="Konferenzraum des Creative Evolution Atelier mit Claude, Grok, Cameron, Mistral und Vibe am runden Tisch">
-    <div class="spot" aria-hidden="true"></div>
-    <div class="glow" aria-hidden="true"></div>
-    <div class="chip" aria-hidden="true"><i></i><i></i><i></i><span id="chipText"></span></div>
-
-    <!-- Sechster Platz: Hologramm-Zuschaltung, Avatar-Asset fehlt noch -->
-    <button class="invite" data-seat="invite" aria-pressed="false">
-      <span class="invite-frame" aria-hidden="true">
-        <svg viewBox="0 0 48 48"><circle cx="24" cy="17" r="8"/><path d="M8 44c1-11 8-16 16-16s15 5 16 16"/></svg>
-      </span>
-      <span class="invite-text">
-        <strong>Invité</strong>
-        <small>Gastplatz, zugeschaltet</small>
-        <em>Avatar-Asset fehlt</em>
-      </span>
-    </button>
-
-    <div class="seats" id="seats"></div>
-  </div>
-
-  <nav class="dock" aria-label="Aktiven Sprecher markieren">
-    <span class="dock-label">Wer spricht?</span>
-    <div class="dock-buttons" id="dock"></div>
-    <button type="button" id="toggleInvite" aria-pressed="false">Invité anzeigen</button>
-    <button type="button" id="toggleTranscript" aria-expanded="false">Transkript</button>
-  </nav>
-  <aside class="transcript-panel" id="transcriptPanel" hidden aria-label="Sitzungstranskript">
-    <div class="transcript-head">
-      <strong>Sitzungstranskript</strong>
-      <button type="button" id="closeTranscript" aria-label="Transkript schließen">×</button>
-    </div>
-    <p class="privacy-note">Nur im Arbeitsspeicher dieser Seite. Kein automatisches Speichern. Bei Neuladen gehen nicht exportierte Einträge verloren.</p>
-    <label for="meetingTopic">Thema</label>
-    <input id="meetingTopic" maxlength="160" placeholder="Besprechungsthema">
-    <div class="transcript-log" id="transcriptLog" role="log" aria-live="polite"></div>
-    <form id="entryForm">
-      <label for="entrySpeaker">Sprecher</label>
-      <select id="entrySpeaker"></select>
-      <label for="entryText">Beitrag (manuell erfassen)</label>
-      <textarea id="entryText" rows="3" maxlength="10000" required placeholder="Gesagten Beitrag eingeben …"></textarea>
-      <button type="submit">Beitrag hinzufügen</button>
-    </form>
-    <div class="transcript-actions">
-      <button type="button" id="exportTxt">TXT herunterladen</button>
-      <button type="button" id="exportMd">Markdown herunterladen</button>
-      <button type="button" id="resetTranscript" class="danger">Sitzung löschen</button>
-    </div>
-    <p class="privacy-note">V1 protokolliert ausschließlich manuell eingegebene Beiträge, keine Sprache. Export vor dem Löschen prüfen; der Browser kann einen erfolgreichen Dateispeicher nicht bestätigen.</p>
-  </aside>
+<main>
+<section class="stage" id="stage" aria-label="Meeting-Raum mit fünf Teamplätzen" data-active="">
+<img class="scene" src="assets/scene.jpg" alt="Creative Evolution Atelier: fünf leere Stühle mit den Namensschildern Claude, Grok, Cameron, Mistral und Vibe">
+<div id="avatars" class="avatars" aria-hidden="true"></div><div class="spot"></div><div id="seatStates"></div>
+<div class="stage-status"><span class="live-dot"></span><span id="stageStatus">Bereit für deine Begrüßung</span></div>
+<div class="subtitle" id="subtitle" hidden><strong id="subtitleName"></strong><p id="subtitleText"></p></div>
+<div class="guest" id="guest" hidden><strong id="guestLabel">Gast</strong><span>Zu Gast im Atelier</span></div>
+</section>
 </main>
-<script src="js/app.js"></script>
-<script src="js/transcript.js"></script>
-</body>
-</html>
+<button id="settingsOpen" class="admin-trigger" aria-label="Administration öffnen" title="Administration · Strg + Alt + A">⚙</button>
+<div class="talk-control"><button type="button" id="ptt" class="ptt" aria-pressed="false">🎙 <span>Zum Sprechen halten</span><kbd>Leertaste</kbd></button><p id="talkHint" role="status" aria-live="polite">Begrüße dein Team.</p></div>
+<dialog id="settingsDialog">
+<form id="settingsForm"><div class="dialog-head"><h2>Administration</h2><button type="button" data-close="settingsDialog" aria-label="Schließen">×</button></div>
+<p class="muted">Öffnen: Strg + Alt + A oder das dezente Zahnrad oben rechts. Die erste Wortmeldung ist die Begrüßung; nach der Vorstellung startet die nächste Frage die Diskussion.</p>
+<div class="grid"><label>Aktueller Sprecher<select id="human"><option value="host">Ich</option><option value="guest">Gast</option></select></label><label>Dein Name<input id="hostName" maxlength="80" value="Frank"></label><label>Name des Gastes<input id="guestName" maxlength="80" value="Gast" placeholder="Name frei eingeben"></label></div>
+<div class="checks"><label><input type="checkbox" id="autoSend" checked> Nach Loslassen automatisch senden</label><label><input type="checkbox" id="subtitles"> Untertitel auf der Bühne anzeigen</label></div>
+<p class="muted">Die Schlüssel der KI-Anbieter bleiben im Cloudflare Worker. Zugangstoken und Gespräch bleiben hier nur im Arbeitsspeicher.</p>
+<div class="grid"><label>Worker-Adresse<input type="url" id="workerUrl" placeholder="https://atelier-worker.…workers.dev"></label><label>Persönliches Worker-Zugangstoken<input type="password" id="accessToken" autocomplete="off"></label></div>
+<div class="controls"><button type="button" id="checkConnection">Verbindung prüfen</button><button type="button" id="loadVoices">xAI-Stimmen laden</button><label class="file-button">Alte Konfiguration importieren<input type="file" id="importConfig" accept="application/json,.json" hidden></label></div><p id="connectionStatus" class="muted" role="status">Noch nicht geprüft. Import aus mylovelyteam wird unterstützt.</p>
+<label>Thema / gewünschtes Ergebnis<input id="topic" maxlength="240" placeholder="Was möchten wir gemeinsam erreichen?"></label>
+<div class="grid settings-grid"><label>Gesprächssprache<select id="language"><option value="de">Deutsch</option><option value="fr">Français</option><option value="en">English</option></select></label><label>Runden<select id="rounds"><option value="3">3 Runden</option><option value="4">4 Runden</option></select></label><label>Sprachausgabe<select id="audioMode"><option value="xai">xAI / Grok Stimmen</option><option value="browser">Browserstimmen (Test)</option><option value="text">Nur Text (Test)</option></select></label><label>Sprechtempo <output id="rateValue">1.0×</output><input type="range" id="rate" min="0.7" max="1.4" step="0.1" value="1"></label></div>
+<div class="checks"><label><input type="checkbox" id="autoRounds" checked> Runden automatisch fortsetzen</label><label><input type="checkbox" id="showGuest"> Gastnamen auf der Bühne anzeigen</label><label>KI-Anfragen je Sitzung <input type="number" id="maxCalls" min="20" max="250" value="100"></label></div>
+<div id="memberSettings"></div><datalist id="voiceList"><option value="eve"><option value="leo"><option value="rex"><option value="ara"><option value="sal"></datalist>
+<p class="muted">Die Blickwinkel wechseln pro Runde. Alle dürfen Ideen entwickeln, zustimmen, widersprechen und ihre Position ändern. Vibe ist ein eigener Sitz mit konfigurierbarem Modell; keine erfundene fünfte Anbieter-API.</p>
+<div class="controls"><button type="submit" class="primary">Übernehmen</button><button type="button" id="exportConfig">Konfiguration exportieren (ohne Token)</button></div>
+<p class="muted">Für Live-Betrieb werden Fragen, Gesprächskontext und Sprachaufnahmen an die ausgewählten API-Anbieter übertragen. Diese Anwendung speichert keine Sitzungen in einer Datenbank. Export vor dem Löschen prüfen.</p></form>
+<section class="admin-tools" aria-label="Sitzung steuern"><h3>Sitzung</h3><p id="status" role="status" aria-live="polite">Verbindung einrichten, dann das Team per Push-to-Talk begrüßen.</p><p class="muted"><span id="roundLabel">Noch keine Gesprächsrunde</span> · <span id="calls">0 KI-Anfragen</span></p>
+<div class="controls"><button type="button" id="introduce">Vorstellung starten / wiederholen</button><button type="button" id="continue">Fortsetzen / nächste Runde</button><button type="button" id="pause">Pause</button><button type="button" id="finish">Ergebnis erstellen</button><button type="button" id="transcriptOpen">Gespräch <span id="entryCount">0</span></button><button type="button" id="fullscreen">Vollbild umschalten</button></div>
+<form id="questionForm" class="question-form"><label for="question">Texteingabe / erkannte Sprache prüfen</label><textarea id="question" maxlength="6000" rows="2" placeholder="Begrüßung, Frage oder Zusatzinformation …"></textarea><button type="submit" class="primary" id="send">Ans Team senden ↗</button></form><p id="micStatus" class="muted">Mikrofon nur bei gedrückter Taste · max. 60 Sekunden</p>
+<details class="result" id="resultPanel"><summary>Gemeinsames Ergebnis</summary><pre id="result">Noch kein Ergebnis erstellt.</pre><button type="button" id="exportResult">Ergebnis + gesamtes Gespräch als TXT</button></details>
+</section></dialog>
+<dialog id="transcriptDialog"><div class="dialog-head"><h2>Gespräch & Ergebnis</h2><button data-close="transcriptDialog" aria-label="Schließen">×</button></div><p class="muted">Vollständige generierte Texte; unterbrochene oder nicht vorgelesene Beiträge werden gekennzeichnet. Kein automatisches Speichern. Neuladen verwirft die Sitzung.</p><div class="controls"><button id="exportTxt">TXT exportieren</button><button id="deleteSession" class="danger">Sitzung löschen</button></div><div id="transcriptLog" role="log"></div></dialog>
+<script type="module" src="js/app.js"></script>
+</body></html>

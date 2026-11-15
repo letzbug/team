@@ -1,0 +1,56 @@
+{
+  "schema": "atelier/meeting-2.1",
+  "settings": {
+    "workerUrl": "",
+    "topic": "",
+    "language": "de",
+    "rounds": 3,
+    "autoRounds": true,
+    "maxCalls": 100,
+    "audioMode": "xai",
+    "rate": 1,
+    "speaker": "host",
+    "hostName": "Frank",
+    "guestName": "Gast",
+    "showGuest": false,
+    "subtitles": false,
+    "autoSend": true
+  },
+  "participants": [
+    {
+      "id": "claude",
+      "name": "Claude",
+      "provider": "anthropic",
+      "model": "",
+      "voice": "leo"
+    },
+    {
+      "id": "grok",
+      "name": "Grok",
+      "provider": "xai",
+      "model": "",
+      "voice": "rex"
+    },
+    {
+      "id": "cameron",
+      "name": "Cameron",
+      "provider": "openai",
+      "model": "",
+      "voice": "eve"
+    },
+    {
+      "id": "mistral",
+      "name": "Mistral",
+      "provider": "mistral",
+      "model": "",
+      "voice": "ara"
+    },
+    {
+      "id": "vibe",
+      "name": "Vibe",
+      "provider": "mistral",
+      "model": "",
+      "voice": "sal"
+    }
+  ]
+}

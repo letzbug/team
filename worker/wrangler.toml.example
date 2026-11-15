@@ -1,0 +1,28 @@
+name = "atelier-worker"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+ALLOWED_ORIGINS = "https://letzbug.github.io"
+# Exact model IDs from YOUR existing configuration; never insert provider secrets here.
+ALLOWED_MODELS = '{"openai":["YOUR_OPENAI_MODEL"],"anthropic":["YOUR_CLAUDE_MODEL"],"xai":["YOUR_GROK_MODEL"],"mistral":["YOUR_MISTRAL_MODEL","YOUR_VIBE_MODEL"]}'
+ALLOWED_VOICES = "eve,leo,rex,ara,sal"
+STT_MODEL = "grok-voice-transcribe-2.0"
+MAX_TOKENS = "3000"
+MAX_PROMPT_CHARS = "60000"
+DAILY_CALL_LIMIT = "400"
+PRICES_PER_MTOK = '{}'
+
+# Atomic counter; transcript/audio are never stored here.
+[[durable_objects.bindings]]
+name = "ATELIER_LIMITER"
+class_name = "RequestLimiter"
+
+[[migrations]]
+tag = "v1-meeting-limiter"
+new_sqlite_classes = ["RequestLimiter"]
+
+# Existing deployments may retain their ATELIER_KV instead of the limiter binding.
+# KV is approximate with parallel calls. Do not remove existing migrations.
+# Secrets in Cloudflare: ATELIER_ACCESS_TOKEN, OPENAI_API_KEY,
+# ANTHROPIC_API_KEY, XAI_API_KEY, MISTRAL_API_KEY
