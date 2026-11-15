@@ -9,6 +9,12 @@
 <div class="stage-status"><span class="live-dot"></span><span id="stageStatus">Wir hören zu.</span></div>
 <div class="subtitle" id="subtitle" hidden><strong id="subtitleName"></strong><p id="subtitleText"></p></div>
 <div class="guest" id="guest" hidden><strong id="guestLabel">Gast</strong><span>Zu Gast im Atelier</span></div>
+<aside id="remoteCall" class="remote-call" aria-label="Telefonischer KI-Gast" hidden>
+  <div class="call-heading"><span class="call-symbol" aria-hidden="true">☎</span><strong id="callName"></strong><span class="call-type">KI-Gast</span></div>
+  <img id="callPortrait" alt="" width="977" height="729">
+  <p id="callStatus" role="status" aria-live="polite"></p><p id="callRole"></p>
+  <button type="button" id="hangupCall" class="danger" aria-label="Gastanruf beenden">☎ Auflegen</button>
+</aside>
 </section>
 </main>
 <button id="settingsOpen" class="admin-trigger" aria-label="Administration öffnen" title="Administration · Strg + Alt + A">⚙</button>
@@ -24,6 +30,7 @@
 <label>Thema / gewünschtes Ergebnis<input id="topic" maxlength="240" placeholder="Was möchten wir gemeinsam erreichen?"></label>
 <div class="grid settings-grid"><label>Gesprächssprache<select id="language"><option value="de">Deutsch</option><option value="fr">Français</option><option value="en">English</option></select></label><label>Antwortmodus<select id="responseMode"><option value="live">Live · schnelle Beiträge</option><option value="balanced">Ausgewogen</option><option value="deep">Mehr Denkzeit</option></select></label><label>Webrecherche<select id="researchProvider"><option value="openai">Cameron · OpenAI</option><option value="xai">Grok · xAI</option></select></label><label>Runden<select id="rounds"><option value="3">3 Runden</option><option value="4">4 Runden</option></select></label><label>Sprachausgabe<select id="audioMode"><option value="xai">xAI / Grok Stimmen</option><option value="browser">Browserstimmen (Test)</option><option value="text">Nur Text (Test)</option></select></label><label>Sprechtempo <output id="rateValue">1.0×</output><input type="range" id="rate" min="0.7" max="1.4" step="0.1" value="1"></label></div>
 <div class="checks"><label><input type="checkbox" id="autoRounds" checked> Runden automatisch fortsetzen</label><label><input type="checkbox" id="showGuest"> Gastnamen auf der Bühne anzeigen</label><label>KI-Anfragen je Sitzung <input type="number" id="maxCalls" min="20" max="250" value="100"></label></div>
+<details class="result"><summary>Telefonische KI-Gäste</summary><p class="muted">„Cameron, ruf Gem an“ öffnet den Gastanruf. Gem antwortet auf direkte Ansprache; die fünf Teamplätze bleiben unverändert. „Leg bitte auf“ beendet den Anruf. Mika und Ani sind für später vorbereitet.</p><div class="grid"><label>Gem · Google Gemini · Modellkennung<input id="gemModel" maxlength="150"></label><label>Gem · xAI-Stimme<input id="gemVoice" maxlength="150" list="voiceList"></label></div><p class="muted">Benötigt GEMINI_API_KEY als Worker-Secret und die Modellkennung unter ALLOWED_MODELS → google. Gem nutzt die bestehende xAI-Sprachausgabe.</p></details>
 <div id="memberSettings"></div><datalist id="voiceList"><option value="eve"><option value="leo"><option value="rex"><option value="ara"><option value="sal"></datalist>
 <p class="muted">Die Blickwinkel wechseln pro Runde. Alle dürfen Ideen entwickeln, zustimmen, widersprechen und ihre Position ändern. Vibe ist ein eigener Sitz mit konfigurierbarem Modell; keine erfundene fünfte Anbieter-API.</p>
 <div class="controls"><button type="submit" class="primary">Übernehmen</button><button type="button" id="exportConfig">Konfiguration exportieren (ohne Token)</button></div>

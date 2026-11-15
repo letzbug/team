@@ -2,12 +2,14 @@ import {Meeting,MEMBERS,LENSES} from './engine.js';
 import {Services,PushToTalk} from './services.js';
 import {Avatars} from './avatars.js';
 import {defaultConfig} from './config.js';
+import {RemoteCallView} from './remote-call.js';
 const $=id=>document.getElementById(id);
 const config=defaultConfig();
 let token='',health=null,healthKey='',connectionBusy=false;
 const avatars=new Avatars(config.participants);
 const services=new Services(config,()=>token,(type,d)=>{if(type==='mouth')avatars.mouth(d.id,d.value);});
 const meeting=new Meeting(services,config);meeting.config=config;
+new RemoteCallView(meeting);
 const labels={spoken:'vollständig vorgelesen',interrupted:'unterbrochen – vollständiger generierter Text',pending:'noch nicht vorgelesen','text-only':'nur Text','test-voice':'Gruppenwort mit einer Browser-Teststimme','audio-error':'Sprachausgabe fehlgeschlagen',text:'Text / Transkription'};
 const logNodes=new Map();
 const status=text=>{$('status').textContent=text;};
@@ -128,7 +130,7 @@ function memberFields(){
     $('memberSettings').append(row);
   }
 }
-function fillSettings(){for(const id of ['workerUrl','topic','language','rounds','audioMode','rate','maxCalls','responseMode','researchProvider','hostName','guestName'])$(id).value=config[id];$('accessToken').value=token;$('autoSend').checked=config.autoSend;$('human').value=config.speaker;$('showGuest').checked=config.showGuest;$('subtitles').checked=config.subtitles;$('autoRounds').checked=config.autoRounds;$('rateValue').textContent=config.rate.toFixed(1)+'×';memberFields();}
+function fillSettings(){const gem=config.remoteGuests.find(g=>g.id==='gem');$('gemModel').value=gem.model;$('gemVoice').value=gem.voice;for(const id of ['workerUrl','topic','language','rounds','audioMode','rate','maxCalls','responseMode','researchProvider','hostName','guestName'])$(id).value=config[id];$('accessToken').value=token;$('autoSend').checked=config.autoSend;$('human').value=config.speaker;$('showGuest').checked=config.showGuest;$('subtitles').checked=config.subtitles;$('autoRounds').checked=config.autoRounds;$('rateValue').textContent=config.rate.toFixed(1)+'×';memberFields();}
 function applySettings(){
   const next={};for(const id of ['workerUrl','topic','language','audioMode','responseMode','researchProvider','hostName','guestName'])next[id]=$(id).value.trim();
   if(next.workerUrl){const u=new URL(next.workerUrl);if(u.username||u.password||u.search||u.hash)throw new Error('Worker-Adresse ohne Zugangsdaten, Query oder Fragment eingeben.');if(u.protocol!=='https:'&&!(u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname)))throw new Error('Worker-Adresse muss HTTPS verwenden.');}
@@ -136,17 +138,19 @@ function applySettings(){
   if(meeting.round>next.rounds)throw new Error('Die Rundenzahl kann nicht unter die laufende Runde gesenkt werden.');
   Object.assign(config,next);token=$('accessToken').value.trim();
   for(const row of $('memberSettings').children){const p=config.participants.find(p=>p.id===row.dataset.id);for(const field of ['provider','model','voice'])p[field]=row.querySelector(`[data-field="${field}"]`).value.trim();}
+  const gem=config.remoteGuests.find(g=>g.id==='gem');gem.model=$('gemModel').value.trim();gem.voice=$('gemVoice').value.trim();
   refreshGuest();if(!config.subtitles)$('subtitle').hidden=true;services.setRate(config.rate);
 }
 $('settingsForm').addEventListener('submit',e=>{e.preventDefault();try{applySettings();$('settingsDialog').close();status('Einstellungen übernommen. Flexible Ansprache aktiv.');hint('Wir hören zu.');}catch(err){error(err);}});
 $('checkConnection').addEventListener('click',async()=>{try{applySettings();await checkConnection();}catch(e){error(e);}});
 $('loadVoices').addEventListener('click',async()=>{try{applySettings();const data=await services.voices();$('voiceList').replaceChildren();for(const v of data.voices||[]){const o=document.createElement('option');o.value=v.voice_id;o.label=v.name||v.voice_id;$('voiceList').append(o);}$('connectionStatus').textContent=`${(data.voices||[]).length} Stimmen geladen. Gewünschte IDs müssen im Worker freigegeben sein.`;}catch(e){error(e);}});
 $('rate').addEventListener('input',()=>{const rate=Number($('rate').value);$('rateValue').textContent=rate.toFixed(1)+'×';services.setRate(rate);});
-$('exportConfig').addEventListener('click',()=>{try{applySettings();download('atelier-meeting.config.json',JSON.stringify({schema:'atelier/meeting-2.6',settings:{...config,participants:undefined},participants:config.participants.map(({id,name,provider,model,voice})=>({id,name,provider,model,voice}))},null,2),'application/json');}catch(e){error(e);}});
+$('exportConfig').addEventListener('click',()=>{try{applySettings();download('atelier-meeting.config.json',JSON.stringify({schema:'atelier/meeting-2.7',settings:{...config,participants:undefined},participants:config.participants.map(({id,name,provider,model,voice})=>({id,name,provider,model,voice}))},null,2),'application/json');}catch(e){error(e);}});
 $('importConfig').addEventListener('change',async e=>{
   const file=e.target.files[0];if(!file)return;
   try{if(file.size>100000)throw new Error('Konfiguration zu groß.');const data=JSON.parse((await file.text()).replace(/^\ufeff/,''));const settings=data.settings||{};
     for(const k of ['workerUrl','topic','hostName','guestName'])if(typeof settings[k]==='string')config[k]=settings[k];
+    for(const g of Array.isArray(settings.remoteGuests)?settings.remoteGuests:[]){const target=config.remoteGuests.find(x=>x.id===g.id);if(target)for(const k of ['model','voice'])if(typeof g[k]==='string')target[k]=g[k].slice(0,150);}
     if(['live','balanced','deep'].includes(settings.responseMode))config.responseMode=settings.responseMode;
     if(['openai','xai'].includes(settings.researchProvider))config.researchProvider=settings.researchProvider;
     if(['de','fr','en'].includes(settings.language))config.language=settings.language;
@@ -161,7 +165,7 @@ $('importConfig').addEventListener('change',async e=>{
   }catch(err){error(err);}finally{e.target.value='';}
 });
 // Read-only debug API: useful to inspect a stopped test session, never contains the token.
-window.AtelierMeeting={get state(){return {phase:meeting.phase,round:meeting.round,calls:meeting.calls,entries:structuredClone(meeting.entries),summary:meeting.summary};}};
+window.AtelierMeeting={get state(){return {phase:meeting.phase,round:meeting.round,calls:meeting.calls,entries:structuredClone(meeting.entries),summary:meeting.summary,remoteCall:structuredClone(meeting.remoteCall)};}};
 $('human').addEventListener('change',()=>{config.speaker=$('human').value;});
 for(const id of ['hostName','guestName'])$(id).addEventListener('input',()=>{config[id]=$(id).value.slice(0,80);refreshGuest();});
 $('showGuest').addEventListener('change',()=>{config.showGuest=$('showGuest').checked;refreshGuest();});

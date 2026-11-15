@@ -9,6 +9,7 @@ export class Services {
     if(!res.ok){const j=await res.json().catch(()=>({}));throw new Error(j.error||`HTTP ${res.status}`);}return res;
   }
   async health(){const data=await (await this.request('/v1/health',{method:'GET'})).json();this.healthInfo=data;return data;}
+  async checkGuest(guest,signal){const h=await (await this.request('/v1/health',{method:'GET',signal})).json();if(!h.providers?.includes(guest.provider)||!h.models?.[guest.provider]?.includes(guest.model))throw new Error(`${guest.name}: Worker aktualisieren, GEMINI_API_KEY und Modellfreigabe prüfen.`);}
   async voices(){return (await this.request('/v1/voices',{method:'GET'})).json();}
   async ask(p,prompt,signal,{purpose='dialogue'}={}){return (await this.request('/v1/chat',{signal,body:{provider:p.provider,model:p.model,prompt,maxTokens:2200,responseMode:this.config.responseMode||'live',purpose}})).json();}
   async research(query,language,signal){const provider=this.config.researchProvider||'openai';if(provider==='openai'&&this.healthInfo&&!this.healthInfo.research?.providers?.includes('openai'))throw new Error('OpenAI-Websuche benötigt Worker 2.6 mit freigegebenem OpenAI-Suchmodell.');try{return (await this.request('/v1/research',{signal,body:{query,language,provider}})).json();}catch(e){if(e.message==='Nicht gefunden.'||e.message==='HTTP 404')throw new Error('Webrecherche benötigt Worker 2.5. Bitte den Cloudflare-Code aktualisieren.');throw e;}}
@@ -57,7 +58,7 @@ export class Services {
     if(!('speechSynthesis' in window))throw new Error('Browserstimme nicht verfügbar.');
     return new Promise((resolve,reject)=>{
       const u=new SpeechSynthesisUtterance(text);u.lang={de:'de-DE',fr:'fr-FR',en:'en-GB'}[this.config.language];u.rate=Number(this.config.rate)||1;
-      const voices=speechSynthesis.getVoices().filter(v=>v.lang.startsWith(this.config.language));if(voices.length)u.voice=voices[['claude','grok','cameron','mistral','vibe'].indexOf(p.id)%voices.length];
+      const voices=speechSynthesis.getVoices().filter(v=>v.lang.startsWith(this.config.language));if(voices.length)u.voice=voices[Math.max(0,['claude','grok','cameron','mistral','vibe'].indexOf(p.id))%voices.length];
       this.cancelPlayback=()=>{speechSynthesis.cancel();this.cancelPlayback=null;resolve(false);};
       u.onend=()=>{this.cancelPlayback=null;resolve(isCurrent());};u.onerror=e=>{this.cancelPlayback=null;reject(new Error(e.error));};speechSynthesis.speak(u);
     });

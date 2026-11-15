@@ -1,17 +1,18 @@
 // Semantic turn-taking. Classification uses Cameron's configured model, never keywords.
-export function parseRoute(raw){
+export function parseRoute(raw,{guestIds=['gem','mika','ani'],activeGuest=null}={}){
   let r;try{r=JSON.parse(String(raw).replace(/^\s*```(?:json)?\s*/,'').replace(/\s*```\s*$/,''));}catch{throw new Error('Gesprächsabsicht konnte nicht gelesen werden. Bitte erneut versuchen.');}
-  const actions=['direct','introduce','team','resume','pause','summary','clarify'];
+  const actions=['direct','introduce','team','resume','pause','summary','clarify','call','hangup'];
   if(!r||!actions.includes(r.action))throw new Error('Ungültige Gesprächsabsicht. Es wird niemand automatisch aufgerufen.');
-  const ids=['claude','grok','cameron','mistral','vibe'];
-  const uncertain=typeof r.confidence!=='number'||r.confidence<.75||r.confidence>1||(r.action==='direct'&&!ids.includes(r.target));
+  const ids=['claude','grok','cameron','mistral','vibe',...(activeGuest?[activeGuest]:[])];
+  const uncertain=typeof r.confidence!=='number'||r.confidence<.75||r.confidence>1||(r.action==='direct'&&!ids.includes(r.target))||(r.action==='call'&&!guestIds.includes(r.target));
   if(uncertain)return {action:'clarify',target:null,confidence:0,question:''};
-  return {action:r.action,target:r.action==='direct'?r.target:null,confidence:r.confidence,question:typeof r.question==='string'?r.question.trim().slice(0,240):'',needsSearch:r.needsSearch===true,searchQuery:typeof r.searchQuery==='string'?r.searchQuery.trim().slice(0,2000):''};
+  return {action:r.action,target:['direct','call'].includes(r.action)?r.target:null,confidence:r.confidence,question:typeof r.question==='string'?r.question.trim().slice(0,240):'',needsSearch:r.needsSearch===true,searchQuery:typeof r.searchQuery==='string'?r.searchQuery.trim().slice(0,2000):''};
 }
-export function routingPrompt({text,name,language,focus,lastSpeaker,interruptedSpeaker,suspended,round,history,clarification}){
+export function routingPrompt({text,name,language,focus,lastSpeaker,interruptedSpeaker,suspended,round,history,clarification,guests=[],activeGuest=null}){
   return [
     'ATELIER_TURN_ROUTER_V1. Du steuerst die Wortverteilung einer Besprechung. Analysiere die Bedeutung und den Gesprächskontext, keine festen Schlüsselwörter. Antworte ausschließlich als JSON, ohne Kommentar oder Gedankengang.',
-    'Schema: {"action":"direct|introduce|team|resume|pause|summary|clarify","target":"claude|grok|cameron|mistral|vibe|null","confidence":0.0,"question":"kurze Rückfrage nur bei clarify","needsSearch":false,"searchQuery":"knapper Suchauftrag ohne unnötige Namen oder private Gesprächsdaten"}.',
+    'Schema: {"action":"direct|introduce|team|resume|pause|summary|clarify|call|hangup","target":"claude|grok|cameron|mistral|vibe|gem|mika|ani|null","confidence":0.0,"question":"kurze Rückfrage nur bei clarify","needsSearch":false,"searchQuery":"knapper Suchauftrag ohne unnötige Namen oder private Gesprächsdaten"}.',
+    `REMOTE GÄSTE: ${guests.map(g=>g.id+' ('+g.name+')').join(', ')}. Verbunden: ${activeGuest||'niemand'}. call: Menschen möchten einen Gast anrufen/dazuholen, z.B. „Cameron, ruf Gem an“. Sinngleiche Formulierungen verstehen. target ist die Gast-ID. Bloße Erwähnung, Zitat oder verneinter Anruf ist kein call. hangup: ausdrücklicher Wunsch, den Gastanruf zu beenden. Ein einfaches Danke beendet nichts automatisch. direct an Gast nur wenn verbunden; sonst bei gewünschtem Gespräch call. Eine Rückfrage/Antwort ohne Namen kann an den verbundenen Gast gehen, wenn er zuletzt gesprochen hat. Der Gast wird niemals automatisch Teil der fünfköpfigen Runde.`,
     'direct: Ein einzelnes Mitglied soll antworten, auch bei indirekter Bitte um dessen Einschätzung. Auch reine Begrüßung oder Smalltalk ist direct, standardmäßig an Cameron. Keine Vorstellung bei bloßem Hallo oder Erwähnung eines Gastes.',
     'introduce: Nur wenn die Menschen ausdrücklich eine Vorstellung des ganzen Teams/Ateliers wünschen. Verstehe sinngleiche Formulierungen. Eine einzelne KI um Selbstvorstellung bitten ist direct an diese KI.',
     'team: Eine Frage wird ausdrücklich an alle, die anderen, das Team oder in die Runde geöffnet; oder gemeinsames Brainstorming wird gewünscht. Eine direkte Sachfrage an eine KI allein öffnet niemals die Runde. Wenn Cameron ausdrücklich mit einer Gruppenaktion beauftragt wird (gemeinsam brainstormen, die anderen befragen), ist das team, trotz ihres Namens. Eine allgemeine Frage ohne erkennbaren Gruppenauftrag geht standardmäßig direct an Cameron.',

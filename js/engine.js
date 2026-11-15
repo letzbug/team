@@ -1,4 +1,5 @@
 import {parseRoute,routingPrompt} from './routing.js';
+import {findGuest,CALL_WORDS} from './guests.js';
 // Framework-free conversation controller. Provider work and audio are injected.
 export const MEMBERS = [
   {id:'claude',name:'Claude',provider:'anthropic',model:'claude-sonnet-5-5',voice:'leo',color:'#5cc8ff',x:11,role:'Analyse, kritische Prüfung, Risiken und Qualität'},
@@ -27,17 +28,21 @@ export class Meeting extends EventTarget {
     super(); this.services=services;
     this.config={language:'de',rounds:3,autoRounds:true,maxCalls:100,participants:structuredClone(MEMBERS),...config};
     this.entries=[];this.round=0;this.revision=0;this.summary='';this.summaryVersion=-1;this.started=new Date().toISOString();
-    this.epoch=0;this.busy=false;this.phase='idle';this.task=null;this.calls=0;this.controllers=new Set();this.receptionDone=false;this.suspendedTask=null;this.focus=null;this.lastSpeaker=null;this.activeSpeaker=null;this.interruptedSpeaker=null;this.clarification='';this.research=[];
+    this.epoch=0;this.busy=false;this.phase='idle';this.task=null;this.calls=0;this.controllers=new Set();this.receptionDone=false;this.suspendedTask=null;this.focus=null;this.lastSpeaker=null;this.activeSpeaker=null;this.interruptedSpeaker=null;this.clarification='';this.research=[];this.remoteCall=null;
   }
   emit(type,detail={}) {this.dispatchEvent(new CustomEvent(type,{detail}));}
   status(phase,text){this.phase=phase;this.emit('status',{phase,text});}
+  member(id){return this.config.participants.find(p=>p.id===id)||findGuest(this.config,id);}
+  callState(state){this.remoteCall=state;this.emit('call',{state:state?{...state,guest:this.member(state.id)}:null});}
+  hangup(){this.stop('Anruf beendet');this.task=null;this.focus=null;this.interruptedSpeaker=null;const guest=this.remoteCall&&this.member(this.remoteCall.id);this.callState(null);if(guest)this.add('System',`Anruf mit ${guest.name} beendet.`,'call-event');this.status('listening',CALL_WORDS[this.config.language].closed);}
   add(author,text,kind='contribution',extra={}) {
-    const p=this.config.participants.find(p=>p.id===author);
+    const p=this.member(author);
     const e={id:this.entries.length+1,time:new Date().toISOString(),author,name:p?.name||author,text,kind,round:this.round,delivery:'text',...extra};
     this.entries.push(e);if(kind!=='system')this.summaryVersion=-1;this.emit('entry',e);return e;
   }
   current(e){return e===this.epoch;}
   stop(reason='Pause') {
+    if(this.remoteCall?.status==='calling')this.callState(null);
     if(this.activeSpeaker)this.interruptedSpeaker=this.activeSpeaker;this.activeSpeaker=null;
     this.epoch++;for(const c of this.controllers)c.abort();this.controllers.clear();
     this.services.stopAudio();this.busy=false;this.emit('speaker',{id:null});this.emit('hands',{items:[]});
@@ -48,7 +53,8 @@ export class Meeting extends EventTarget {
     const phases=['Ideen und unterschiedliche Vorschläge','Kritische Prüfung und Verbesserung','Konkrete gemeinsame Lösung','Umsetzungsplan und nächste Schritte'];
     return [
       `Du bist ${p.name}, KI-Mitglied im Creative Evolution Atelier. Cameron moderiert; die Menschen entscheiden.`,
-      `Dein wechselnder Blickwinkel in dieser Runde: ${LENSES[(MEMBERS.findIndex(m=>m.id===p.id)+Math.max(0,this.round-1))%LENSES.length]}. Das ist ein Ausgangspunkt, keine feste Rolle: Du darfst alle Aspekte bearbeiten. Die üblichen Sitzbeschreibungen legen dein Denken nicht fest.`,
+      `Dein wechselnder Blickwinkel in dieser Runde: ${LENSES[(Math.max(0,MEMBERS.findIndex(m=>m.id===p.id))+Math.max(0,this.round-1))%LENSES.length]}. Das ist ein Ausgangspunkt, keine feste Rolle: Du darfst alle Aspekte bearbeiten. Die üblichen Sitzbeschreibungen legen dein Denken nicht fest.`,
+      findGuest(this.config,p.id)?`Du bist ein situativ angerufener KI-Gast (${p.provider}), kein festes Teammitglied und kein Mensch in einem echten Telefonnetz. Schwerpunkt: ${p.role}. Du antwortest nur auf direkte Ansprache; keine ungefragten Kommentare oder erfundenen Erinnerungen an frühere Chats.`:'',
       'Sei weder gefällig noch künstlich konträr. Stimme zu, wenn ein Argument trägt; widersprich nur mit einem konkreten Grund. Prüfe auch eigene frühere Annahmen und ändere deine Position, wenn bessere Argumente auftauchen. Benenne kurz das Argument, das dich überzeugt oder umgestimmt hat. Keine Pflicht, immer etwas Negatives zu finden.',
       'Ab Runde 2: Beziehe dich konkret auf mindestens ein relevantes Argument eines anderen Mitglieds, sofern vorhanden, und entwickle es weiter, prüfe es oder löse einen Zielkonflikt. Fünf wiederholte Einzelvorträge sind kein Austausch.',
       `Antworte ausschließlich auf ${LANGUAGES[this.config.language]}. Thema: ${this.config.topic||'Gemeinsame Ideenentwicklung'}.`,
@@ -72,7 +78,7 @@ export class Meeting extends EventTarget {
     const entry=this.add(id,text,kind,{delivery:'pending'});
     this.activeSpeaker=id;this.lastSpeaker=id;this.emit('speaker',{id});this.status('speaking',`${entry.name} spricht`);
     try {
-      const spoken=await this.services.speak(this.config.participants.find(p=>p.id===id),text,()=>this.current(epoch));
+      const spoken=await this.services.speak(this.member(id),text,()=>this.current(epoch));
       entry.delivery=!this.current(epoch)?'interrupted':spoken?'spoken':'text-only';
       this.emit('delivery',entry);
       return this.current(epoch);
@@ -99,9 +105,9 @@ export class Meeting extends EventTarget {
     this.calls++;this.emit('usage',{calls:this.calls});
     const ctrl=new AbortController();this.controllers.add(ctrl);
     try{
-      const r=await this.services.ask(p,routingPrompt({text:task.text,name:task.name,language:LANGUAGES[this.config.language],focus:this.focus,lastSpeaker:this.lastSpeaker,interruptedSpeaker:this.interruptedSpeaker,suspended:this.suspendedTask?.kind,round:this.round,history:this.history(),clarification:this.clarification}),ctrl.signal,{purpose:'routing'});
+      const r=await this.services.ask(p,routingPrompt({text:task.text,name:task.name,language:LANGUAGES[this.config.language],focus:this.focus,lastSpeaker:this.lastSpeaker,interruptedSpeaker:this.interruptedSpeaker,suspended:this.suspendedTask?.kind,round:this.round,history:this.history(),clarification:this.clarification,guests:this.config.remoteGuests||[],activeGuest:this.remoteCall?.status==='connected'?this.remoteCall.id:null}),ctrl.signal,{purpose:'routing'});
       if(!this.current(epoch))throw new DOMException('Abgebrochen','AbortError');
-      return parseRoute(r?.text);
+      return parseRoute(r?.text,{guestIds:(this.config.remoteGuests||[]).map(g=>g.id),activeGuest:this.remoteCall?.status==='connected'?this.remoteCall.id:null});
     }finally{this.controllers.delete(ctrl);}
   }
   resumeTask(){
@@ -156,7 +162,13 @@ export class Meeting extends EventTarget {
         this.status('routing','Cameron hört zu …');
         const decision=await this.classify(task,epoch);if(!this.current(epoch))return;
         this.emit('route',decision);this.task=null;
-        if(decision.action==='introduce'){
+        if(decision.action==='call'){
+          this.focus=null;this.clarification='';this.task={kind:'call',target:decision.target,lead:false};
+        }else if(decision.action==='hangup'){
+          const guest=this.remoteCall&&this.member(this.remoteCall.id);this.focus=null;this.clarification='';this.callState(null);
+          if(guest&&!await this.say('cameron',CALL_WORDS[this.config.language].bye(guest.name),'call-event',epoch))return;
+          this.status('listening',CALL_WORDS[this.config.language].closed);
+        }else if(decision.action==='introduce'){
           this.focus=null;this.clarification='';this.task={kind:'intro',index:0,welcome:false,hello:false,introText:task.text};
         }else if(decision.action==='direct'){
           this.focus=decision.target;this.clarification='';this.interruptedSpeaker=null;
@@ -186,8 +198,25 @@ export class Meeting extends EventTarget {
       }else if(task.kind==='research'){
         await this.researchFor(task,epoch);if(!this.current(epoch))return;
         this.task=task.nextTask;
+      }else if(task.kind==='call'){
+        const guest=findGuest(this.config,task.target);
+        if(!guest?.enabled||!guest.model||!guest.provider)throw new Error(`${guest?.name||'Gast'} ist noch nicht eingerichtet.`);
+        if(this.remoteCall?.id===guest.id&&this.remoteCall.status==='connected'){this.focus=guest.id;this.task={kind:'direct',target:guest.id};return;}
+        if(this.remoteCall)throw new Error('Bitte den laufenden Gastanruf zuerst beenden.');
+        const ctrl=new AbortController();this.controllers.add(ctrl);
+        try{await this.services.checkGuest(guest,ctrl.signal);}finally{this.controllers.delete(ctrl);}
+        if(!this.current(epoch))return;
+        this.callState({id:guest.id,status:'calling'});
+        if(!task.lead){if(!await this.say('cameron',CALL_WORDS[this.config.language].lead(guest.name),'call-event',epoch))return;task.lead=true;}
+        this.status('thinking',`Calling ${guest.name}…`);
+        const answer=await this.ask(guest,`ANRUF: Du wirst gerade als externer Gast ins Atelier geholt. Begrüße die Runde natürlich mit Hallo und deinem Namen, insgesamt höchstens 20–40 Wörter. Falls die jüngste menschliche Äußerung schon eine Sachfrage enthält, beantworte sie kurz nach der Begrüßung; sonst frage knapp, wobei du helfen kannst. Keine Vorstellung des ganzen Teams. Keine Behauptung eines echten Video-/Telefonanrufs oder Zugriffs auf frühere private Chats.`,epoch);
+        if(!this.current(epoch))return;
+        this.callState({id:guest.id,status:'connected'});this.focus=guest.id;this.interruptedSpeaker=null;
+        if(!await this.say(guest.id,answer,'guest-greeting',epoch))return;
+        this.task=null;this.status('listening',guest.name+' hört zu · Gast verbunden');
       }else if(task.kind==='direct'){
-        const member=this.config.participants.find(m=>m.id===task.target);
+        const member=this.member(task.target);
+        if(findGuest(this.config,task.target)&&this.remoteCall?.id!==task.target)throw new Error('Dieser Gast ist nicht verbunden.');
         if(!member?.model)throw new Error('Für diesen Sitz fehlt die Modellkennung.');
         this.status('thinking',member.name+' denkt nach');
         const answer=await this.ask(member,'EINZELGESPRÄCH: Die letzte menschliche Äußerung richtet sich ausschließlich an dich. Antworte darauf direkt in 20–40 Wörtern und maximal drei kurzen Sätzen. Bei bloßer Begrüßung nur freundlich zurückgrüßen, keine ungefragte Vorstellung. Nutze den Gesprächskontext, vor allem eine gerade beantwortete Frage von dir. Kein Kommentar anderer Mitglieder, keine Moderation der gesamten Runde und keine automatische Fortsetzung. Stelle höchstens eine notwendige Rückfrage.',epoch);
@@ -273,14 +302,14 @@ export class Meeting extends EventTarget {
         if(!await this.say('cameron',oral,'closing',epoch))return;
         this.summaryVersion=this.entries.length;this.task=null;this.status('complete','Ergebnis und Gespräch sind bereit für den TXT-Export');
       }
-    }catch(err){if(this.current(epoch)){this.add('System',err.message,'system');this.status('paused',err.message);}}
+    }catch(err){if(this.current(epoch)){if(this.remoteCall?.status==='calling')this.callState(null);this.add('System',err.message,'system');this.status('paused',err.message);}}
     finally{
       if(this.current(epoch)){this.busy=false;this.emit('speaker',{id:null});this.emit('change');if(this.task&&this.phase!=='paused')return this.run();}
     }
   }
   exportText(){
     const roster=this.config.participants.map(p=>`${p.name}: ${p.provider} / ${p.model||'Modell nicht gesetzt'} / Stimme ${p.voice}`).join('\n');
-    return ['CREATIVE EVOLUTION ATELIER',`Thema: ${this.config.topic||'Ohne Thema'}`,`Beginn: ${this.started}`,`Export: ${new Date().toISOString()}`,`Stand: Runde ${this.round}/${this.config.rounds}, ${this.phase}`,`KI-Anfragen: ${this.calls}`,roster,'','ZUSAMMENFASSUNG',this.summary||'Noch keine abschließende Zusammenfassung erstellt.',this.summary&&this.summaryVersion<0?'ACHTUNG: Nach der Zusammenfassung kamen weitere Beiträge hinzu. Bitte Ergebnis neu erstellen.':'','','VOLLSTÄNDIGES GESPRÄCH','Audiovermerk: spoken = vollständig abgespielt; interrupted = unterbrochen (voller generierter Text, nur teilweise gehört); pending/audio-error/text-only = nicht vollständig vorgelesen; test-voice = Gruppenwort nur mit einer Browser-Teststimme, kein Fünfstimmenchor. Menschen: STT-Transkription oder Texteingabe; keine Rohaufnahme im Export.','',...this.entries.map(e=>`[${e.time}] Runde ${e.round} | ${e.name} | ${e.kind} | ${e.delivery}\n${e.text}\n`)].join('\n');
+    return ['CREATIVE EVOLUTION ATELIER',`Thema: ${this.config.topic||'Ohne Thema'}`,`Beginn: ${this.started}`,`Export: ${new Date().toISOString()}`,`Stand: Runde ${this.round}/${this.config.rounds}, ${this.phase}`,`KI-Anfragen: ${this.calls}`,roster,...(this.config.remoteGuests||[]).filter(g=>this.entries.some(e=>e.author===g.id)).map(g=>`Telefonischer KI-Gast ${g.name}: ${g.provider} / ${g.model} / Stimme ${g.voice}`),'','ZUSAMMENFASSUNG',this.summary||'Noch keine abschließende Zusammenfassung erstellt.',this.summary&&this.summaryVersion<0?'ACHTUNG: Nach der Zusammenfassung kamen weitere Beiträge hinzu. Bitte Ergebnis neu erstellen.':'','','VOLLSTÄNDIGES GESPRÄCH','Audiovermerk: spoken = vollständig abgespielt; interrupted = unterbrochen (voller generierter Text, nur teilweise gehört); pending/audio-error/text-only = nicht vollständig vorgelesen; test-voice = Gruppenwort nur mit einer Browser-Teststimme, kein Fünfstimmenchor. Menschen: STT-Transkription oder Texteingabe; keine Rohaufnahme im Export.','',...this.entries.map(e=>`[${e.time}] Runde ${e.round} | ${e.name} | ${e.kind} | ${e.delivery}\n${e.text}\n`)].join('\n');
   }
-  reset(){this.stop('Sitzung gelöscht');this.entries=[];this.summary='';this.summaryVersion=-1;this.round=0;this.calls=0;this.task=null;this.revision=0;this.receptionDone=false;this.suspendedTask=null;this.focus=null;this.lastSpeaker=null;this.activeSpeaker=null;this.interruptedSpeaker=null;this.clarification='';this.research=[];this.started=new Date().toISOString();this.status('idle','Bereit');this.emit('reset');}
+  reset(){this.stop('Sitzung gelöscht');this.callState(null);this.entries=[];this.summary='';this.summaryVersion=-1;this.round=0;this.calls=0;this.task=null;this.revision=0;this.receptionDone=false;this.suspendedTask=null;this.focus=null;this.lastSpeaker=null;this.activeSpeaker=null;this.interruptedSpeaker=null;this.clarification='';this.research=[];this.remoteCall=null;this.started=new Date().toISOString();this.status('idle','Bereit');this.emit('reset');}
 }

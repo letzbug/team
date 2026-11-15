@@ -1,8 +1,9 @@
 import {MEMBERS} from './engine.js';
+import {REMOTE_GUESTS} from './guests.js';
 // Frank's non-secret defaults. Never put tokens or provider API keys in this file.
 export function defaultConfig(){return {
   workerUrl:'https://atelier-team-api.letzbug.workers.dev',topic:'',language:'de',
   responseMode:'live',researchProvider:'openai',rounds:3,autoRounds:true,maxCalls:100,audioMode:'xai',rate:1,
   speaker:'host',hostName:'Frank',guestName:'Gast',showGuest:false,subtitles:false,autoSend:true,
-  participants:structuredClone(MEMBERS)
+  remoteGuests:structuredClone(REMOTE_GUESTS),participants:structuredClone(MEMBERS)
 };}
