@@ -1,7 +1,7 @@
 // Remote guests never occupy a team seat or join rounds automatically.
 // Add a portrait and a real, Worker-approved model before enabling another guest.
 export const REMOTE_GUESTS = [
-  {id:'gem',name:'Gem',provider:'google',model:'gemini-3.8-flash',voice:'leo',image:'assets/gem.png',role:'Structure Visionary & Bridge Builder',enabled:true},
+  {id:'gem',name:'Gem',provider:'google',model:'gemini-3.8-flash',voice:'castor',image:'assets/gem.png',role:'Structure Visionary & Bridge Builder',enabled:true},
   {id:'mika',name:'Mika',provider:'',model:'',voice:'',image:'',role:'',enabled:false},
   {id:'ani',name:'Ani',provider:'',model:'',voice:'',image:'',role:'',enabled:false}
 ];
