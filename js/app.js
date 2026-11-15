@@ -1,8 +1,9 @@
 import {Meeting,MEMBERS,LENSES} from './engine.js';
 import {Services,PushToTalk} from './services.js';
 import {Avatars} from './avatars.js';
+import {defaultConfig} from './config.js';
 const $=id=>document.getElementById(id);
-const config={workerUrl:'',topic:'',language:'de',rounds:3,autoRounds:true,maxCalls:100,audioMode:'xai',rate:1,speaker:'host',hostName:'Frank',guestName:'Gast',showGuest:false,subtitles:false,autoSend:true,participants:structuredClone(MEMBERS)};
+const config=defaultConfig();
 let token='',health=null,healthKey='',connectionBusy=false;
 const avatars=new Avatars(config.participants);
 const services=new Services(config,()=>token,(type,d)=>{if(type==='mouth')avatars.mouth(d.id,d.value);});
@@ -32,7 +33,7 @@ function updateButtons(){
 for(const m of config.participants){const node=document.createElement('div');node.className='seat-state';node.dataset.id=m.id;node.dataset.speaking='false';node.style.setProperty('--x',m.x+'%');node.style.setProperty('--c',m.color);const hand=document.createElement('span');hand.className='hand';hand.hidden=true;hand.textContent='✋';const badge=document.createElement('span');badge.className='badge';badge.textContent=m.name;node.append(hand,badge);$('seatStates').append(node);}
 meeting.addEventListener('status',e=>{
   const {phase,text}=e.detail;$('status').classList.toggle('error',phase==='paused');status(text);
-  const simple={thinking:'Das Team denkt nach …',speaking:text,paused:'Pause',idle:meeting.receptionDone?'Wir hören zu.':'Begrüße dein Team.',ready:'Deine Frage oder Ergänzung?',complete:'Das Ergebnis ist bereit.'};
+  const simple={thinking:'Das Team denkt nach …',speaking:text,paused:'Pause',idle:'Wir hören zu.',routing:'Cameron hört zu …',listening:text,ready:'Deine Frage oder Ergänzung?',complete:'Das Ergebnis ist bereit.'};
   const message=simple[phase]||'Wir hören zu.';$('stageStatus').textContent=message;hint(message);updateButtons();
 });
 meeting.addEventListener('change',updateButtons);
@@ -50,21 +51,22 @@ meeting.addEventListener('entry',e=>{
 });
 meeting.addEventListener('delivery',e=>{const item=e.detail;const record=logNodes.get(item.id);if(record)record.meta.textContent=`Runde ${item.round} · ${labels[item.delivery]||item.delivery} · ${new Date(item.time).toLocaleTimeString()}`;});
 meeting.addEventListener('summary',e=>{$('result').textContent=e.detail.text||'Noch kein Ergebnis erstellt.';$('resultPanel').open=!!e.detail.text;});
-meeting.addEventListener('reset',()=>{$('transcriptLog').replaceChildren();logNodes.clear();$('result').textContent='Noch kein Ergebnis erstellt.';$('resultPanel').open=false;$('entryCount').textContent='0';$('calls').textContent='0 KI-Anfragen';$('roundLabel').textContent='Noch keine Gesprächsrunde';$('question').value='';$('subtitle').hidden=true;avatars.reset();$('stage').dataset.listening='false';hint('Begrüße dein Team.');updateButtons();});
+meeting.addEventListener('reset',()=>{$('transcriptLog').replaceChildren();logNodes.clear();$('result').textContent='Noch kein Ergebnis erstellt.';$('resultPanel').open=false;$('entryCount').textContent='0';$('calls').textContent='0 KI-Anfragen';$('roundLabel').textContent='Noch keine Gesprächsrunde';$('question').value='';$('subtitle').hidden=true;avatars.reset();$('stage').dataset.listening='false';hint('Wir hören zu.');updateButtons();});
 function currentHealthKey(){return config.workerUrl+'\n'+token;}
 async function checkConnection(){
   if(connectionBusy)return false;connectionBusy=true;const key=currentHealthKey();health=null;
   try{health=await services.health();if(key!==currentHealthKey())return false;healthKey=key;const names=(health.providers||[]).join(', ')||'keine';$('connectionStatus').textContent=`Worker ${health.version||'ältere Version'} erreichbar. Textanbieter: ${names}. xAI TTS: ${health.voice?.tts?'bereit':'fehlt'}. STT: ${health.voice?.stt?'bereit':'fehlt'}. Kostenlimit: ${health.limiter?'atomar':health.kv?'KV (ungefähr)':'nicht eingerichtet'}.`;return true;}
   catch(e){$('connectionStatus').textContent=e.message;error(e);return false;}finally{connectionBusy=false;}
 }
-async function ready({intro=false,microphone=false}={}){
+async function ready({intro=false,microphone=false,routing=false}={}){
   if(intro&&config.audioMode!=='xai')return true;
   if(!config.workerUrl||!token){openAdmin();throw new Error('Bitte Worker-Adresse und persönliches Zugangstoken eintragen.');}
   if(healthKey!==currentHealthKey()||!health){if(!await checkConnection())throw new Error('Worker-Verbindung nicht verfügbar.');}
   if(microphone){if(!health.voice?.stt)throw new Error('Der Worker benötigt die neue STT-Anbindung.');return true;}
   if(config.audioMode==='xai'&&!health.voice?.tts)throw new Error('Der Worker benötigt die neue xAI-Sprachanbindung.');
   if(intro)return true;
-  const missing=config.participants.filter(p=>!p.model||!(health.providers||[]).includes(p.provider)||(health.models?.[p.provider]&&!health.models[p.provider].includes(p.model)));
+  const checked=routing?config.participants.filter(p=>p.id==='cameron'):config.participants;
+  const missing=checked.filter(p=>!p.model||!(health.providers||[]).includes(p.provider)||(health.models?.[p.provider]&&!health.models[p.provider].includes(p.model)));
   if(missing.length){openAdmin();throw new Error('Modell oder Freigabe fehlt: '+missing.map(p=>p.name).join(', '));}
   return true;
 }
@@ -74,11 +76,11 @@ $('continue').addEventListener('click',action(async()=>{await ready({intro:meeti
 $('pause').addEventListener('click',()=>{ptt.cancel();meeting.stop('Pause – mit Fortsetzen weiterarbeiten');$('ptt').setAttribute('aria-pressed','false');$('micStatus').textContent='Pausiert';updateButtons();});
 $('finish').addEventListener('click',action(async()=>{await ready();closeAdmin();await meeting.finish();}));
 async function submitQuestion(text,name=speakerName()){
-  await ready({intro:!meeting.receptionDone});closeAdmin();await meeting.receive(text,name);
+  await ready({routing:true});closeAdmin();await meeting.receive(text,name);
 }
 $('questionForm').addEventListener('submit',async e=>{
   e.preventDefault();services.unlock();const text=$('question').value.trim();if(!text)return;ptt.cancel();
-  try{await ready({intro:!meeting.receptionDone});const name=speakerName();$('question').value='';closeAdmin();await meeting.receive(text,name);}
+  try{await ready({routing:true});const name=speakerName();$('question').value='';closeAdmin();await meeting.receive(text,name);}
   catch(err){$('question').value=text;error(err);}updateButtons();
 });
 let recordingSpeaker=config.hostName;
@@ -88,7 +90,7 @@ const ptt=new PushToTalk(services,{
   onText:async text=>{
     $('question').value=[$('question').value.trim(),text].filter(Boolean).join('\n');
     $('micStatus').textContent='Sprache erkannt';$('stage').dataset.listening='false';$('ptt').setAttribute('aria-pressed','false');
-    if($('autoSend').checked){const value=$('question').value;try{await ready({intro:!meeting.receptionDone});$('question').value='';// Do not keep the microphone busy through the entire multi-round meeting.
+    if($('autoSend').checked){const value=$('question').value;try{await ready({routing:true});$('question').value='';// Do not keep the microphone busy through the entire multi-round meeting.
       ptt.processing=false;void submitQuestion(value,recordingSpeaker).catch(e=>{$('question').value=value;error(e);}).finally(updateButtons);
     }catch(e){error(e);}}else{openAdmin();$('micStatus').textContent='Text prüfen, dann ans Team senden.';hint('Text im Admin-Menü prüfen.');}
     updateButtons();
@@ -130,11 +132,11 @@ function applySettings(){
   for(const row of $('memberSettings').children){const p=config.participants.find(p=>p.id===row.dataset.id);for(const field of ['provider','model','voice'])p[field]=row.querySelector(`[data-field="${field}"]`).value.trim();}
   refreshGuest();if(!config.subtitles)$('subtitle').hidden=true;services.setRate(config.rate);
 }
-$('settingsForm').addEventListener('submit',e=>{e.preventDefault();try{applySettings();$('settingsDialog').close();status('Einstellungen übernommen. Erste Wortmeldung: Begrüßung.');hint(meeting.receptionDone?'Wir hören zu.':'Begrüße dein Team.');}catch(err){error(err);}});
+$('settingsForm').addEventListener('submit',e=>{e.preventDefault();try{applySettings();$('settingsDialog').close();status('Einstellungen übernommen. Flexible Ansprache aktiv.');hint('Wir hören zu.');}catch(err){error(err);}});
 $('checkConnection').addEventListener('click',async()=>{try{applySettings();await checkConnection();}catch(e){error(e);}});
 $('loadVoices').addEventListener('click',async()=>{try{applySettings();const data=await services.voices();$('voiceList').replaceChildren();for(const v of data.voices||[]){const o=document.createElement('option');o.value=v.voice_id;o.label=v.name||v.voice_id;$('voiceList').append(o);}$('connectionStatus').textContent=`${(data.voices||[]).length} Stimmen geladen. Gewünschte IDs müssen im Worker freigegeben sein.`;}catch(e){error(e);}});
 $('rate').addEventListener('input',()=>{const rate=Number($('rate').value);$('rateValue').textContent=rate.toFixed(1)+'×';services.setRate(rate);});
-$('exportConfig').addEventListener('click',()=>{try{applySettings();download('atelier-meeting.config.json',JSON.stringify({schema:'atelier/meeting-2.1',settings:{...config,participants:undefined},participants:config.participants.map(({id,name,provider,model,voice})=>({id,name,provider,model,voice}))},null,2),'application/json');}catch(e){error(e);}});
+$('exportConfig').addEventListener('click',()=>{try{applySettings();download('atelier-meeting.config.json',JSON.stringify({schema:'atelier/meeting-2.4',settings:{...config,participants:undefined},participants:config.participants.map(({id,name,provider,model,voice})=>({id,name,provider,model,voice}))},null,2),'application/json');}catch(e){error(e);}});
 $('importConfig').addEventListener('change',async e=>{
   const file=e.target.files[0];if(!file)return;
   try{if(file.size>100000)throw new Error('Konfiguration zu groß.');const data=JSON.parse((await file.text()).replace(/^\ufeff/,''));const settings=data.settings||{};
