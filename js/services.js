@@ -29,10 +29,10 @@ export class Services {
     if(this.source){try{this.source.stop();}catch{}this.source=null;}
     if(this.frame)cancelAnimationFrame(this.frame);this.frame=null;this.onState('mouth',{id:null,value:0});
   }
-  async speak(p,text,isCurrent){
+  async speak(p,text,isCurrent,{volume=1}={}){
     this.stopAudio();if(!isCurrent())return false;
     if(this.config.audioMode==='text')return false;
-    if(this.config.audioMode==='browser')return this.browserSpeech(p,text,isCurrent);
+    if(this.config.audioMode==='browser')return this.browserSpeech(p,text,isCurrent,volume);
     const ctrl=new AbortController();this.audioCtrl=ctrl;
     const res=await this.request('/v1/tts',{signal:ctrl.signal,body:{text,voice:p.voice,language:this.config.language}});
     const bytes=await res.arrayBuffer();if(!isCurrent())return false;
@@ -40,7 +40,7 @@ export class Services {
       const buffer=await this.context.decodeAudioData(bytes);if(!isCurrent())return false;
       return new Promise((resolve,reject)=>{
         const source=this.context.createBufferSource(),analyser=this.context.createAnalyser();analyser.fftSize=256;
-        source.buffer=buffer;source.playbackRate.value=Number(this.config.rate)||1;source.connect(analyser);analyser.connect(this.context.destination);
+        source.buffer=buffer;source.playbackRate.value=Number(this.config.rate)||1;source.connect(analyser);const gain=this.context.createGain();gain.gain.value=volume;analyser.connect(gain);gain.connect(this.context.destination);
         this.source=source;this.analyser=analyser;
         const finish=value=>{if(this.source===source)this.source=null;if(this.frame)cancelAnimationFrame(this.frame);this.frame=null;this.cancelPlayback=null;this.onState('mouth',{id:p.id,value:0});resolve(value);};
         this.cancelPlayback=()=>{source.onended=null;try{source.stop();}catch{}finish(false);};
@@ -50,7 +50,7 @@ export class Services {
         try{source.start();tick();}catch(e){this.cancelPlayback=null;reject(e);}
       });
     }
-    const url=URL.createObjectURL(new Blob([bytes],{type:'audio/mpeg'}));const audio=new Audio(url);audio.playbackRate=Number(this.config.rate)||1;this.audio=audio;
+    const url=URL.createObjectURL(new Blob([bytes],{type:'audio/mpeg'}));const audio=new Audio(url);audio.playbackRate=Number(this.config.rate)||1;audio.volume=volume;this.audio=audio;
     return new Promise((resolve,reject)=>{
       const cleanup=()=>{URL.revokeObjectURL(url);this.cancelPlayback=null;if(this.audio===audio)this.audio=null;};
       this.cancelPlayback=()=>{audio.pause();cleanup();resolve(false);};
@@ -58,10 +58,10 @@ export class Services {
       audio.play().catch(e=>{cleanup();reject(new Error('Audio vom Browser blockiert. Erneut auf Fortsetzen klicken. '+e.message));});
     });
   }
-  browserSpeech(p,text,isCurrent){
+  browserSpeech(p,text,isCurrent,volume=1){
     if(!('speechSynthesis' in window))throw new Error('Browserstimme nicht verfügbar.');
     return new Promise((resolve,reject)=>{
-      const u=new SpeechSynthesisUtterance(text);u.lang={de:'de-DE',fr:'fr-FR',en:'en-GB'}[this.config.language];u.rate=Number(this.config.rate)||1;
+      const u=new SpeechSynthesisUtterance(text);u.volume=volume;u.lang={de:'de-DE',fr:'fr-FR',en:'en-GB'}[this.config.language];u.rate=Number(this.config.rate)||1;
       const voices=speechSynthesis.getVoices().filter(v=>v.lang.startsWith(this.config.language));if(voices.length)u.voice=voices[Math.max(0,['claude','grok','cameron','mistral','vibe'].indexOf(p.id))%voices.length];
       this.cancelPlayback=()=>{speechSynthesis.cancel();this.cancelPlayback=null;resolve(false);};
       u.onend=()=>{this.cancelPlayback=null;resolve(isCurrent());};u.onerror=e=>{this.cancelPlayback=null;reject(new Error(e.error));};speechSynthesis.speak(u);

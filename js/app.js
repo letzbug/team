@@ -39,6 +39,7 @@ meeting.addEventListener('status',e=>{
   const message=simple[phase]||'Wir hören zu.';$('stageStatus').textContent=message;hint(message);updateButtons();
 });
 meeting.addEventListener('change',updateButtons);
+meeting.addEventListener('gesture',e=>avatars.gesture(e.detail));
 meeting.addEventListener('call-error',e=>{$('talkHint').textContent=e.detail.message;$('stageStatus').textContent=e.detail.message;});
 meeting.addEventListener('usage',e=>$('calls').textContent=`${e.detail.calls} KI-Anfragen`);
 meeting.addEventListener('speaker',e=>{
@@ -131,9 +132,9 @@ function memberFields(){
     $('memberSettings').append(row);
   }
 }
-function fillSettings(){const gem=config.remoteGuests.find(g=>g.id==='gem');$('gemModel').value=gem.model;$('gemVoice').value=gem.voice;for(const id of ['workerUrl','topic','language','rounds','audioMode','rate','maxCalls','responseMode','researchProvider','hostName','guestName'])$(id).value=config[id];$('accessToken').value=token;$('autoSend').checked=config.autoSend;$('human').value=config.speaker;$('showGuest').checked=config.showGuest;$('subtitles').checked=config.subtitles;$('autoRounds').checked=config.autoRounds;$('rateValue').textContent=config.rate.toFixed(1)+'×';memberFields();}
+function fillSettings(){$('coffeeMode').checked=config.coffeeMode;const gem=config.remoteGuests.find(g=>g.id==='gem');$('gemModel').value=gem.model;$('gemVoice').value=gem.voice;for(const id of ['workerUrl','topic','language','rounds','audioMode','rate','maxCalls','responseMode','researchProvider','hostName','guestName'])$(id).value=config[id];$('accessToken').value=token;$('autoSend').checked=config.autoSend;$('human').value=config.speaker;$('showGuest').checked=config.showGuest;$('subtitles').checked=config.subtitles;$('autoRounds').checked=config.autoRounds;$('rateValue').textContent=config.rate.toFixed(1)+'×';memberFields();}
 function applySettings(){
-  const next={};for(const id of ['workerUrl','topic','language','audioMode','responseMode','researchProvider','hostName','guestName'])next[id]=$(id).value.trim();
+  config.coffeeMode=$('coffeeMode').checked;const next={};for(const id of ['workerUrl','topic','language','audioMode','responseMode','researchProvider','hostName','guestName'])next[id]=$(id).value.trim();
   if(next.workerUrl){const u=new URL(next.workerUrl);if(u.username||u.password||u.search||u.hash)throw new Error('Worker-Adresse ohne Zugangsdaten, Query oder Fragment eingeben.');if(u.protocol!=='https:'&&!(u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname)))throw new Error('Worker-Adresse muss HTTPS verwenden.');}
   next.rounds=Number($('rounds').value);next.maxCalls=Number($('maxCalls').value);next.rate=Number($('rate').value);next.autoRounds=$('autoRounds').checked;next.autoSend=$('autoSend').checked;next.speaker=$('human').value;next.showGuest=$('showGuest').checked;next.subtitles=$('subtitles').checked;
   if(meeting.round>next.rounds)throw new Error('Die Rundenzahl kann nicht unter die laufende Runde gesenkt werden.');
@@ -176,7 +177,7 @@ $('importConfig').addEventListener('change',async e=>{
     const rounds=Number(settings.rounds||settings.defaultRounds);if([3,4].includes(rounds))config.rounds=rounds;
     if(['xai','browser','text'].includes(settings.audioMode))config.audioMode=settings.audioMode;
     if(['host','guest'].includes(settings.speaker))config.speaker=settings.speaker;
-    for(const key of ['showGuest','subtitles','autoSend'])if(typeof settings[key]==='boolean')config[key]=settings[key];
+    for(const key of ['showGuest','subtitles','autoSend','coffeeMode'])if(typeof settings[key]==='boolean')config[key]=settings[key];
     if(typeof settings.autoRounds==='boolean')config.autoRounds=settings.autoRounds;
     if(Number(settings.maxCalls)>=20&&Number(settings.maxCalls)<=250)config.maxCalls=Number(settings.maxCalls);
     for(const p of Array.isArray(data.participants)?data.participants:[]){const target=config.participants.find(m=>m.id===p.id||(p.id==='guest'&&p.name==='Mistral'&&m.id==='mistral'));if(!target)continue;if(['openai','anthropic','xai','mistral'].includes(p.provider))target.provider=p.provider;for(const k of ['model','voice'])if(typeof p[k]==='string')target[k]=p[k].slice(0,150);}

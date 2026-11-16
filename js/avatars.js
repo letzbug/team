@@ -9,5 +9,6 @@ export class Avatars {
   speaking(id){const ids=Array.isArray(id)?id:[id];for(const [key,s] of this.states){s.speaking=ids.includes(key);s.node.dataset.speaking=String(s.speaking);this.adapters.get(key)?.speaking?.(s.speaking);}}
   mouth(id,value){if(!id){for(const key of this.states.keys())this.mouth(key,0);return;}const s=this.states.get(id);if(s){s.mouth=value;this.adapters.get(id)?.mouth?.(value);}}
   hands(items){for(const [id,s] of this.states){s.hand=items.some(h=>h.id===id);this.adapters.get(id)?.hand?.(s.hand);}}
+  gesture({id,gesture,emotion}){this.adapters.get(id)?.gesture?.(gesture,emotion);}
   reset(){this.speaking(null);this.mouth(null,0);this.hands([]);}
 }

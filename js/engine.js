@@ -1,3 +1,4 @@
+import {coffeeScene} from './coffee.js';
 import {parseRoute,routingPrompt} from './routing.js';
 import {findGuest,CALL_WORDS} from './guests.js';
 // Framework-free conversation controller. Provider work and audio are injected.
@@ -28,7 +29,7 @@ export class Meeting extends EventTarget {
     super(); this.services=services;
     this.config={language:'de',rounds:3,autoRounds:true,maxCalls:100,participants:structuredClone(MEMBERS),...config};
     this.entries=[];this.round=0;this.revision=0;this.summary='';this.summaryVersion=-1;this.started=new Date().toISOString();
-    this.epoch=0;this.busy=false;this.phase='idle';this.task=null;this.calls=0;this.controllers=new Set();this.receptionDone=false;this.suspendedTask=null;this.focus=null;this.lastSpeaker=null;this.activeSpeaker=null;this.interruptedSpeaker=null;this.clarification='';this.research=[];this.remoteCall=null;
+    this.coffeeUsed=false;this.coffeeTurns=0;this.epoch=0;this.busy=false;this.phase='idle';this.task=null;this.calls=0;this.controllers=new Set();this.receptionDone=false;this.suspendedTask=null;this.focus=null;this.lastSpeaker=null;this.activeSpeaker=null;this.interruptedSpeaker=null;this.clarification='';this.research=[];this.remoteCall=null;
   }
   emit(type,detail={}) {this.dispatchEvent(new CustomEvent(type,{detail}));}
   status(phase,text){this.phase=phase;this.emit('status',{phase,text});}
@@ -48,7 +49,7 @@ export class Meeting extends EventTarget {
     this.services.stopAudio();this.busy=false;this.emit('speaker',{id:null});this.emit('hands',{items:[]});
     this.status('paused',reason);
   }
-  history(){return this.entries.filter(e=>e.kind!=='system').map(e=>`[${e.id}] ${e.name} (Runde ${e.round}, ${e.kind}, ${e.delivery}): ${e.text}`).join('\n');}
+  history(){return this.entries.filter(e=>e.kind!=='system'&&e.kind!=='coffee').map(e=>`[${e.id}] ${e.name} (Runde ${e.round}, ${e.kind}, ${e.delivery}): ${e.text}`).join('\n');}
   prompt(p,job,history=this.history()) {
     const phases=['Ideen und unterschiedliche Vorschläge','Kritische Prüfung und Verbesserung','Konkrete gemeinsame Lösung','Umsetzungsplan und nächste Schritte'];
     return [
@@ -73,12 +74,12 @@ export class Meeting extends EventTarget {
     try {const r=await this.services.ask(p,this.prompt(p,job,history),ctrl.signal,{purpose:options.purpose||(this.task?.kind==='summary'?'summary':'dialogue')});if(!this.current(epoch))throw new DOMException('Abgebrochen','AbortError');if(!r?.text?.trim())throw new Error(`${p.name}: leere Antwort`);return r.text.trim();}
     finally{this.controllers.delete(ctrl);}
   }
-  async say(id,text,kind,epoch) {
+  async say(id,text,kind,epoch,audioOptions={}) {
     if(!this.current(epoch))return false;
     const entry=this.add(id,text,kind,{delivery:'pending'});
     this.activeSpeaker=id;this.lastSpeaker=id;this.emit('speaker',{id});this.status('speaking',`${entry.name} spricht`);
     try {
-      const spoken=await this.services.speak(this.member(id),text,()=>this.current(epoch));
+      const spoken=await this.services.speak(this.member(id),text,()=>this.current(epoch),audioOptions);
       entry.delivery=!this.current(epoch)?'interrupted':spoken?'spoken':'text-only';
       this.emit('delivery',entry);
       return this.current(epoch);
@@ -87,6 +88,21 @@ export class Meeting extends EventTarget {
       if(this.current(epoch))throw new Error(`Sprachausgabe fehlgeschlagen: ${err.message}. Beitrag steht im Transkript. Fortsetzen wiederholt diesen Redebeitrag.`);
       return false;
     }finally{if(this.current(epoch)){this.activeSpeaker=null;this.emit('speaker',{id:null});}}
+  }
+  async coffeeBreak(epoch){
+    if(!this.config.coffeeMode||this.coffeeUsed||this.remoteCall||!this.current(epoch))return this.current(epoch);
+    this.coffeeUsed=true; // Consume before audio: interruptions never replay a gag.
+    const [first,reply,emotion]=coffeeScene(this.config.language);
+    const seats=shuffled(this.config.participants);if(seats.length<2)return true;
+    const previous=this.lastSpeaker,focus=this.focus;
+    this.emit('gesture',{id:seats[0].id,gesture:'coffee',emotion});
+    try{
+      if(!await this.say(seats[0].id,first,'coffee',epoch,{volume:.6,emotion}))return false;
+      return await this.say(seats[1].id,reply,'coffee',epoch,{volume:.6,emotion:'dry'});
+    }finally{
+      this.emit('gesture',{id:seats[0].id,gesture:'idle',emotion:'neutral'});
+      if(this.current(epoch)){this.lastSpeaker=previous;this.focus=focus;}else if(seats.some(p=>p.id===this.interruptedSpeaker))this.interruptedSpeaker=previous;
+    }
   }
   introduce(){if(this.task&&['round','summary'].includes(this.task.kind))this.suspendedTask=this.task;this.stop('Vorstellung');this.receptionDone=false;this.task={kind:'intro',index:0,welcome:false,hello:false};return this.run();}
   async receive(text,name='Frank') {
@@ -232,6 +248,7 @@ export class Meeting extends EventTarget {
         this.status('thinking',member.name+' denkt nach');
         const answer=await this.ask(member,'EINZELGESPRÄCH: Die letzte menschliche Äußerung richtet sich ausschließlich an dich. Antworte darauf direkt in 20–40 Wörtern und maximal drei kurzen Sätzen. Bei bloßer Begrüßung nur freundlich zurückgrüßen, keine ungefragte Vorstellung. Nutze den Gesprächskontext, vor allem eine gerade beantwortete Frage von dir. Kein Kommentar anderer Mitglieder, keine Moderation der gesamten Runde und keine automatische Fortsetzung. Stelle höchstens eine notwendige Rückfrage.',epoch);
         if(!await this.say(member.id,answer,'direct',epoch))return;
+        this.coffeeTurns++;if(this.coffeeTurns>=3&&!await this.coffeeBreak(epoch))return;
         this.task=null;this.status('listening',member.name+' hört zu'+(this.suspendedTask?' · Runde pausiert':''));
       }else if(task.kind==='intro'){
         // No overlapping chorus: Cameron greets first; the others greet during their self-introduction.
@@ -277,6 +294,7 @@ export class Meeting extends EventTarget {
           if(r.error){failed=true;this.add('System',`${m.name}: ${r.error.message}`,'system');continue;}
           if(!await this.say(m.id,r.text,'contribution',epoch))return;
           task.done.push(m.id);
+          if(task.done.length===2&&!await this.coffeeBreak(epoch))return;
         }
         if(failed){this.status('paused','Einige Antworten fehlen. Fortsetzen versucht nur die fehlenden Mitglieder erneut.');return;}
         this.status('thinking','Team prüft die gehörten Beiträge auf Einwände');
@@ -322,5 +340,5 @@ export class Meeting extends EventTarget {
     const roster=this.config.participants.map(p=>`${p.name}: ${p.provider} / ${p.model||'Modell nicht gesetzt'} / Stimme ${p.voice}`).join('\n');
     return ['CREATIVE EVOLUTION ATELIER',`Thema: ${this.config.topic||'Ohne Thema'}`,`Beginn: ${this.started}`,`Export: ${new Date().toISOString()}`,`Stand: Runde ${this.round}/${this.config.rounds}, ${this.phase}`,`KI-Anfragen: ${this.calls}`,roster,...(this.config.remoteGuests||[]).filter(g=>this.entries.some(e=>e.author===g.id)).map(g=>`Telefonischer KI-Gast ${g.name}: ${g.provider} / ${g.model} / Stimme ${g.voice}`),'','ZUSAMMENFASSUNG',this.summary||'Noch keine abschließende Zusammenfassung erstellt.',this.summary&&this.summaryVersion<0?'ACHTUNG: Nach der Zusammenfassung kamen weitere Beiträge hinzu. Bitte Ergebnis neu erstellen.':'','','VOLLSTÄNDIGES GESPRÄCH','Audiovermerk: spoken = vollständig abgespielt; interrupted = unterbrochen (voller generierter Text, nur teilweise gehört); pending/audio-error/text-only = nicht vollständig vorgelesen; test-voice = Gruppenwort nur mit einer Browser-Teststimme, kein Fünfstimmenchor. Menschen: STT-Transkription oder Texteingabe; keine Rohaufnahme im Export.','',...this.entries.map(e=>`[${e.time}] Runde ${e.round} | ${e.name} | ${e.kind} | ${e.delivery}\n${e.text}\n`)].join('\n');
   }
-  reset(){this.stop('Sitzung gelöscht');this.callState(null);this.entries=[];this.summary='';this.summaryVersion=-1;this.round=0;this.calls=0;this.task=null;this.revision=0;this.receptionDone=false;this.suspendedTask=null;this.focus=null;this.lastSpeaker=null;this.activeSpeaker=null;this.interruptedSpeaker=null;this.clarification='';this.research=[];this.remoteCall=null;this.started=new Date().toISOString();this.status('idle','Bereit');this.emit('reset');}
+  reset(){this.coffeeUsed=false;this.coffeeTurns=0;this.stop('Sitzung gelöscht');this.callState(null);this.entries=[];this.summary='';this.summaryVersion=-1;this.round=0;this.calls=0;this.task=null;this.revision=0;this.receptionDone=false;this.suspendedTask=null;this.focus=null;this.lastSpeaker=null;this.activeSpeaker=null;this.interruptedSpeaker=null;this.clarification='';this.research=[];this.remoteCall=null;this.started=new Date().toISOString();this.status('idle','Bereit');this.emit('reset');}
 }
